@@ -7,7 +7,7 @@ Each field of the environment form has one source here. Change the file, not the
 |---|---|
 | Name | `catati-dev` |
 | Network access | Custom: paste [network-allowlist.txt](network-allowlist.txt), tick "also allow default package managers" |
-| Environment variables | None. Every user of the environment can read them, so never put secrets there. |
+| Environment variables | Paste [environment.env](environment.env), then fill the blank secrets in the form. Dev values only: every user of the environment can read them. |
 | Setup script | Paste [setup.sh](setup.sh) |
 
 ## Change process
@@ -31,7 +31,12 @@ Install the Claude GitHub App on both orgs: `catati` (7 repos) and `catati-ops` 
 - `hermes`: Docker is in the image, but the containers are not tested in the cloud.
 - `ads`, `products`, `catati-products`: no Git remote, so they are not reachable from the cloud.
 
+## Rules for environment.env
+
+- Non-secret value: commit it in [environment.env](environment.env).
+- Secret value: keep the name with a blank value here; fill the value only in the form.
+- A value that differs per repo (for example `NUXT_PUBLIC_FIREBASE_*`, which `catati-app` and `catati-cat-hotel` use for different Firebase projects) does not belong here: commit it in that repo.
+
 ## Not covered
 
-- Deploys and live Firebase access: these need a service-account key. Use a network secret, not an environment variable, if you add one.
-- Shopify (`*.myshopify.com`) and Supabase (`*.supabase.co`): add them to the allowlist only when a task needs them.
+- Deploys: these need a service-account key with deploy rights. Keep that out of this shared environment.

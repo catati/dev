@@ -6,3 +6,5 @@ playwright.download.prss.microsoft.com
 *.web.app
 *.cloudfunctions.net
 *.run.app
+*.supabase.co
+catati-dev-store.myshopify.com
