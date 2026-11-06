@@ -11,3 +11,9 @@ catati-dev-store.myshopify.com
 accounts.shopify.com
 cdn.shopify.com
 slack.com
+github.com
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+theme-kit-access.shopifyapps.com
+api.xero.com
+identity.xero.com

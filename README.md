@@ -18,7 +18,7 @@ Each field of the environment form has one source here. Change the file, not the
 
 ## Checks for a new session
 
-Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `pnpm -v`, `wrangler --version`, `shopify version`, `shfmt --version` and `shellcheck --version`.
+Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `pnpm -v`, `wrangler --version`, `shopify version`, `shfmt --version`, `shellcheck --version` and `gitleaks version`.
 
 ## GitHub access
 
@@ -30,12 +30,12 @@ Cloudflare is the only serverless provider. Firebase is being removed, so this e
 
 | Repo | Install in a session | Notes |
 |---|---|---|
-| `catsper` | Its SessionStart hook runs `make install` | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. |
+| `catsper` | `make install` | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. |
 | `cat-hotel` | `corepack pnpm@10.30.3 install`, then `make install` | Its SessionStart hook sets up models and Git hooks only. `wrangler` is a devDependency. |
 | `agents` | `make tools-install` | `make test` needs the pinned `shfmt` and `shellcheck`. `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
 | `catati-horizon` | `npm ci` | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
 | `branding` | Nothing | `wrangler dev` serves it; `scripts/build-fonts.py` uses `fonttools`. |
-| `knowledge` | Nothing | `node scripts/kb.mjs check`. |
+| `knowledge` | `make install` | `make verify` runs the pinned `gitleaks` secret scan. |
 
 Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `ads`, `products`, `catati-products` (no Git remote).
 
