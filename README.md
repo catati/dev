@@ -18,7 +18,20 @@ Each field of the environment form has one source here. Change the file, not the
 
 ## Checks for a new session
 
-Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `pnpm -v`, `wrangler --version`, `shopify version`, `shfmt --version`, `shellcheck --version` and `gitleaks version`.
+Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `corepack --version` and `uv --version`. Then run the install step of the repo in the session.
+
+## Repo contract
+
+The environment provides runtimes and root-only OS libraries: Node 24, corepack, uv, and Playwright's Chromium system libraries.
+Each repo declares every other tool it needs, so its own install step sets it up the same way on a Mac, in CI and in the cloud:
+
+- npm CLIs (`wrangler`, `@shopify/cli`, Playwright): `devDependencies`, pinned in the lockfile.
+- pnpm version: the `packageManager` field.
+- Python version and packages: `requires-python` and dependencies in `pyproject.toml`, run through `uv`.
+- Native binaries (`shfmt`, `shellcheck`, `gitleaks`): an install target that downloads a pinned version and checks its SHA-256.
+- Playwright browsers: `playwright install chromium` in the install step.
+
+Do not add a repo tool to [setup.sh](setup.sh). Fix the repo instead.
 
 ## GitHub access
 
@@ -28,14 +41,16 @@ Install the Claude GitHub App on the `catati` org. Every repo below lives there.
 
 Cloudflare is the only serverless provider. Firebase is being removed, so this environment does not provide it.
 
-| Repo | Install in a session | Notes |
-|---|---|---|
-| `catsper` | `make install` | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. |
-| `cat-hotel` | `corepack pnpm@10.30.3 install`, then `make install` | Its SessionStart hook sets up models and Git hooks only. `wrangler` is a devDependency. |
-| `agents` | `make tools-install` | `make test` needs the pinned `shfmt` and `shellcheck`. `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
-| `catati-horizon` | `npm ci` | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
-| `branding` | Nothing | `wrangler dev` serves it; `scripts/build-fonts.py` uses `fonttools`. |
-| `knowledge` | `make install` | `make verify` runs the pinned `gitleaks` secret scan. |
+| Repo | Install in a session | Gap against the repo contract | Notes |
+|---|---|---|---|
+| `catsper` | `make install` | Install step does not run `playwright install chromium` (pins `@playwright/test` 1.63.0). | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. |
+| `cat-hotel` | `pnpm install`, then `make install` | Install step does not run `playwright install chromium` (pins `@playwright/test` 1.62.1). | `wrangler` 4.129.0 is already a devDependency. |
+| `agents` | `make tools-install` | `make tools-install` runs only `pnpm install`; it does not install the pinned `shfmt` 3.14.1 and `shellcheck` 0.11.0 that CI downloads. | `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
+| `catati-horizon` | `npm ci` | `@shopify/cli` is not a devDependency; `jq` (used by `scripts/check-theme.sh`) is not declared; install step does not run `playwright install chromium`. | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
+| `branding` | None yet | No `package.json` for `wrangler`; no `pyproject.toml` for `fonttools` and `brotli` (`scripts/build-fonts.py`). | |
+| `knowledge` | `make install` | `make install` does not install the pinned `gitleaks` 8.30.1; `make secrets` skips the scan when it is missing. | |
+
+Until a repo closes its gap, the tools it lacks are not in cloud sessions. Close the gaps before you paste the slim [setup.sh](setup.sh) into the form, or that repo loses those tools in the cloud.
 
 Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `ads`, `products`, `catati-products` (no Git remote).
 
