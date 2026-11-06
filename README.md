@@ -35,7 +35,7 @@ Install the Claude GitHub App on both orgs: `catati` (7 repos) and `catati-ops` 
 
 - Non-secret value: commit it in [example.env](example.env).
 - Secret value: keep the name with a blank value here; fill the value only in the form.
-- A value that differs per repo (for example `NUXT_PUBLIC_FIREBASE_*`, which `catati-app` and `catati-cat-hotel` use for different Firebase projects) does not belong here: commit it in that repo.
+- A value that differs per repo does not belong here: commit it in that repo.
 
 ## Not covered
 

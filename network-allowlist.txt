@@ -1,10 +1,5 @@
 nodejs.org
 cdn.playwright.dev
 playwright.download.prss.microsoft.com
-*.firebaseio.com
-*.firebaseapp.com
-*.web.app
-*.cloudfunctions.net
-*.run.app
 *.supabase.co
 catati-dev-store.myshopify.com
