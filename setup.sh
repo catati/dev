@@ -33,9 +33,11 @@ node -e 'const [a, b] = process.versions.node.split(".").map(Number);
 corepack enable
 
 # Python: uv is in the image and fetches the version each repo's requires-python asks for.
+uv --version # fail setup loudly if the image stops shipping uv
 
 # --- Playwright system libraries -------------------------------------------------
 # apt packages need root. Repos download their own pinned browser builds on install.
+# Keep this version at or above the highest @playwright/test pin across the repos.
 npx -y playwright@1.63.0 install-deps chromium
 
 echo "catati cloud setup: done"
