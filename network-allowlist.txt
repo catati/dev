@@ -1,5 +1,13 @@
+archive.ubuntu.com
+security.ubuntu.com
 nodejs.org
 cdn.playwright.dev
 playwright.download.prss.microsoft.com
+fonts.gstatic.com
+api.cloudflare.com
+*.workers.dev
 *.supabase.co
 catati-dev-store.myshopify.com
+accounts.shopify.com
+cdn.shopify.com
+slack.com

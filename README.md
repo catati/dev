@@ -18,18 +18,26 @@ Each field of the environment form has one source here. Change the file, not the
 
 ## Checks for a new session
 
-Ask Claude to run `check-tools`, `node -v` (expect `v24`) and `pnpm -v`.
+Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `pnpm -v`, `wrangler --version`, `shopify version`, `shfmt --version` and `shellcheck --version`.
 
 ## GitHub access
 
-Install the Claude GitHub App on both orgs: `catati` (7 repos) and `catati-ops` (`brand-guide`).
+Install the Claude GitHub App on the `catati` org. Every repo below lives there.
 
 ## What each repo gets
 
-- `catati-app`: its own SessionStart hook runs `make install`. In the cloud there is no `.git/env`, so `configure` reports `web/.env` as missing. Static checks, unit tests and emulator tests still run. Java 21 is in the image.
-- `catati-cat-hotel`, `agents`, `catati-horizon`: run their install target by hand, or add a SessionStart hook gated on `CLAUDE_CODE_REMOTE=true`.
-- `hermes`: Docker is in the image, but the containers are not tested in the cloud.
-- `ads`, `products`, `catati-products`: no Git remote, so they are not reachable from the cloud.
+Cloudflare is the only serverless provider. Firebase is being removed, so this environment does not provide it.
+
+| Repo | Install in a session | Notes |
+|---|---|---|
+| `catsper` | Its SessionStart hook runs `make install` | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. |
+| `cat-hotel` | `corepack pnpm@10.30.3 install`, then `make install` | Its SessionStart hook sets up models and Git hooks only. `wrangler` is a devDependency. |
+| `agents` | `make tools-install` | `make test` needs the pinned `shfmt` and `shellcheck`. `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
+| `catati-horizon` | `npm ci` | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
+| `branding` | Nothing | `wrangler dev` serves it; `scripts/build-fonts.py` uses `fonttools`. |
+| `knowledge` | Nothing | `node scripts/kb.mjs check`. |
+
+Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `ads`, `products`, `catati-products` (no Git remote).
 
 ## Rules for example.env
 
@@ -39,4 +47,5 @@ Install the Claude GitHub App on both orgs: `catati` (7 repos) and `catati-ops` 
 
 ## Not covered
 
-- Deploys: these need a service-account key with deploy rights. Keep that out of this shared environment.
+- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be scoped to dev resources only.
+- The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet.
