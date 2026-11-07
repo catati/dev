@@ -62,5 +62,5 @@ Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `
 
 ## Not covered
 
-- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be scoped to dev resources only.
+- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be an account API token created in the `catati-dev` account, never in the production "Catati" account.
 - The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet.
