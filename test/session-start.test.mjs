@@ -75,6 +75,13 @@ test('a repo without .githooks keeps its hooks path unset', (t) => {
 	assert.equal(box.hooksPath(), '');
 });
 
+test('a hooks path the user set elsewhere is kept, with a warning', (t) => {
+	const box = sandbox(t);
+	execFileSync('git', ['config', 'core.hooksPath', '.husky'], { cwd: box.root });
+	assert.deepEqual(box.run(), { status: 0, lines: ['catati-dev: hooks-path: core.hooksPath is .husky, not .githooks; left as is'] });
+	assert.equal(box.hooksPath(), '.husky');
+});
+
 test('a run from a subdirectory sets up the whole repo', (t) => {
 	const box = sandbox(t);
 	mkdirSync(join(box.root, 'web'));
