@@ -1,0 +1,14 @@
+{
+  "name": "catati",
+  "description": "Catati's shared Claude Code plugin",
+  "owner": {
+    "name": "Catati"
+  },
+  "plugins": [
+    {
+      "name": "catati",
+      "source": "./plugins/catati",
+      "description": "Sets up every Catati repo one pstack way"
+    }
+  ]
+}

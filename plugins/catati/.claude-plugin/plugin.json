@@ -1,0 +1,9 @@
+{
+  "name": "catati",
+  "version": "0.1.0",
+  "description": "Sets up every Catati repo one pstack way. Enable it for your claude.ai account from the catati/dev marketplace.",
+  "author": {
+    "name": "Catati"
+  },
+  "repository": "https://github.com/catati/dev"
+}
