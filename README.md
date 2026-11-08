@@ -152,6 +152,12 @@ In GitHub Actions, each line starts with `::error::`, so the finding shows on th
 A PR whose author ends in `[bot]`, such as `dependabot[bot]`, is skipped with one line and exit 0.
 If `PR_TITLE` or `PR_BODY` is unset, it prints one line on stderr and exits with 2.
 
+`check-pr` has these known limits, carried over from cat-hotel. A reviewer checks them:
+
+- It checks that each section is present, not that it is filled. The unfilled template plus `Closes #<issue number>` passes.
+- It finds each heading as a substring, so `### Summary` counts as `## Summary`.
+- It counts a heading or the card inside an HTML comment as present.
+
 `setup` copies [templates/pr-format.yml](templates/pr-format.yml) to `.github/workflows/pr-format.yml`. The file is the same in every repo, and its job is named `pr-format`.
 The job does not install the repo. It checks out only `package.json` and `.node-version`, reads the `catati-dev` pin from `devDependencies`, and installs that one package into a temporary folder with `npm install`.
 The same steps work for pnpm and npm repos, because both write the pin to `package.json` as `github:catati/dev#<sha>`. `catati-dev` has no dependencies, so the install takes about 2 s.
