@@ -71,7 +71,7 @@ To test the package, run `npm test`.
 
 `catati-dev session-start` sets up a session in the git repo that holds the current directory:
 
-1. If the repo has a `.githooks` folder, it sets `git config core.hooksPath .githooks`.
+1. If the repo has a `.githooks` folder and `core.hooksPath` is unset, it sets `git config core.hooksPath .githooks`. If `core.hooksPath` already names another folder, such as `.husky`, it keeps that value and prints a warning.
 2. If `~/.claude/rules/pstack-models.md` is missing, it copies `templates/pstack-models.md` there. It never replaces a rule you already have.
 3. It checks that `node` is 24.15 or later. If `package.json` has `packageManager: pnpm@<version>`, it checks that `corepack pnpm --version` prints that version.
 
