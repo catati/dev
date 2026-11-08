@@ -110,19 +110,20 @@ Run it again at any time to bring the repo up to date. A run on a repo that is a
 | --- | --- |
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
 | `.github/pull_request_template.md` | Copies `templates/pull_request_template.md`. |
-| `.github/CODEOWNERS` | Copies `templates/CODEOWNERS`. |
+| `.github/CODEOWNERS` | Adds each line of `templates/CODEOWNERS` that the file lacks, at the end and in template order. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. |
 | `.claude/settings.json` | Adds each entry of `templates/claude-settings.json` that the file lacks. The template asks before `gh pr merge` and before the GitHub MCP merge tool. |
 
 It prints one line per file, as `created <path>`, `updated <path>` or `unchanged <path>`.
 A copy replaces the whole file when one byte differs, and keeps the file's mode.
+The CODEOWNERS merge keeps every line the repo already has, so a repo can add its own owner rules.
 The settings merge keeps every key the repo already has, and adds new list entries at the end of the list.
 If a merge cannot keep the file's own bytes, it prints `skipped <path>: <reason>` and leaves the file as is.
 An example is a file that a JSON rewrite would reformat, or a `permissions.ask` that is not a list.
 It also skips a managed path that is not a regular file, such as a symlink.
 It skips a managed path whose parent directory, such as `.github`, is a symlink. If the link leads out of the repo, the line reads `skipped <path>: resolves outside the repo`.
-A link that stays in the repo is skipped too, because GitHub and git read these files at their own paths, not at the link's target.
+A link that stays in the repo is skipped too. Git commits the link, not the files behind it, so the files would land at a path the standard does not name.
 
 After the files, it prints the findings of `catati-dev check`, such as a missing `e2e` target. Those are the changes `setup` does not make.
 With `--dry-run`, it prints the same lines and writes nothing. The findings then show what would be left after a real run.
