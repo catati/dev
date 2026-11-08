@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { test } from 'node:test';
+import { matchesDoorGlob } from '../lib/check-merge.mjs';
 
 const packageRoot = new URL('../', import.meta.url).pathname;
 const cli = join(packageRoot, 'bin/catati-dev.mjs');
@@ -30,13 +31,25 @@ function repo(t) {
 		git('commit', '-q', '--allow-empty', '-m', 'change');
 		return git('rev-parse', 'HEAD');
 	};
+	const link = (path, target) => {
+		mkdirSync(dirname(join(root, path)), { recursive: true });
+		symlinkSync(target, join(root, path));
+		git('add', '-A');
+		git('commit', '-q', '-m', 'link');
+		return git('rev-parse', 'HEAD');
+	};
+	const gitlink = (path) => {
+		git('update-index', '--add', '--cacheinfo', `160000,${git('rev-parse', 'HEAD')},${path}`);
+		git('commit', '-q', '-m', 'gitlink');
+		return git('rev-parse', 'HEAD');
+	};
 	const run = (args, cwd = root) => {
 		const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'check-merge', ...args], { cwd, encoding: 'utf8', env });
 		const lines = stdout.split('\n').filter(Boolean);
 		const errors = stderr.split('\n').filter(Boolean);
 		return errors.length > 0 ? { status, lines, errors } : { status, lines };
 	};
-	return { root, parent, git, commit, run };
+	return { root, parent, git, commit, link, gitlink, run };
 }
 
 const clean = { status: 0, lines: ['check-merge: no one-way-door path'] };
@@ -56,17 +69,35 @@ const doorExamples = [
 	'.github/dependabot.yml',
 	'.claude/settings.json',
 	'.githooks/pre-push',
+	'.claude/hooks/git-hooks.sh',
+	'.gitmodules',
+	'.npmrc',
+	'web/.npmrc',
 	'env/setup.sh',
 	'package.json',
 	'web/package.json',
 	'Makefile',
+	'web/Makefile',
 	'web/makefile',
 	'GNUmakefile',
 	'make/deploy.mk',
 	'Dockerfile',
 	'mcps/shopify/Dockerfile',
+	'dockerfile',
+	'Dockerfile.dev',
+	'sub/Dockerfile.prod',
+	'prod.Dockerfile',
+	'app.dockerfile',
+	'Containerfile',
+	'mcps/gmail/Containerfile.prod',
+	'api.containerfile',
+	'compose.yml',
+	'compose.yaml',
+	'compose.prod.yml',
+	'deploy/compose.yaml',
 	'docker-compose.yml',
 	'deploy/docker-compose.prod.yaml',
+	'Docker-Compose.yml',
 	'wrangler.toml',
 	'web/wrangler.json',
 	'apps/api/wrangler.jsonc',
@@ -101,24 +132,70 @@ for (const path of doorExamples) {
 test('nested look-alikes of root-only door paths are not doors', (t) => {
 	const { commit, run } = repo(t);
 	const base = commit({ 'README.md': 'a\n' });
-	const head = commit({ 'docs/firebase.json': 'x\n', 'pkg/.github/workflows/ci.yml': 'x\n', 'pkg/env/setup.sh': 'x\n', 'migrations.md': 'x\n' });
+	const head = commit({
+		'docs/firebase.json': 'x\n',
+		'web/.firebaserc': 'x\n',
+		'pkg/.github/workflows/ci.yml': 'x\n',
+		'pkg/env/setup.sh': 'x\n',
+		'migrations.md': 'x\n',
+		'docs/compose.md': 'x\n',
+		'docs/dockerfiles.md': 'x\n',
+		'.github.md': 'x\n',
+		'package-lock.json': 'x\n',
+		'pnpm-lock.yaml': 'x\n',
+	});
 	assert.deepEqual(run([base, head]), clean);
 });
 
-function gateClosure() {
+const literalImport = /^\s*(?:(['"])([^'"]+)\1|new URL\(\s*(['"])([^'"]+)\3\s*,\s*import\.meta\.url\s*\))\s*\)/;
+const staticImport = /^\s*(?:import|export)\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]|^\s*import\s*['"]([^'"]+)['"]/gm;
+
+function staticImports(source) {
+	return [...source.matchAll(staticImport)].map((match) => match[1] ?? match[2]);
+}
+
+function dynamicImports(source, path) {
+	return [...source.matchAll(/\bimport\s*\(/g)].map((match) => {
+		const literal = source.slice(match.index + match[0].length).match(literalImport);
+		if (!literal) throw new Error(`${path} has a dynamic import whose target is not a literal`);
+		return literal[2] ?? literal[4];
+	});
+}
+
+function commandEntry(source, name) {
+	const key = source.match(new RegExp(`^\\s*'${name}':`, 'm'));
+	assert.ok(key, `bin/catati-dev.mjs has no ${name} entry`);
+	const rest = source.slice(key.index + key[0].length);
+	return rest.slice(0, rest.search(/\n\s*(?:'[^']+'|\w+):|\n\};/));
+}
+
+function gateClosure(read = (file) => readFileSync(file, 'utf8')) {
 	const seen = new Set();
-	const visit = (file, pattern) => {
+	const visit = (file, specs) => {
 		const path = relative(packageRoot, file);
 		if (seen.has(path)) return;
 		seen.add(path);
-		for (const [, spec] of readFileSync(file, 'utf8').matchAll(pattern)) if (spec.startsWith('.')) visit(join(dirname(file), spec), staticAndDynamic);
+		const source = read(file);
+		for (const spec of specs ?? [...staticImports(source), ...dynamicImports(source, path)]) if (spec.startsWith('.')) visit(join(dirname(file), spec));
 	};
-	const staticOnly = /^\s*import\b[^'"]*['"]([^'"]+)['"]/gm;
-	const staticAndDynamic = /\bimport\b[^'"]*?['"]([^'"]+)['"]/g;
-	visit(cli, staticOnly);
-	visit(join(packageRoot, 'lib/check-merge.mjs'), staticAndDynamic);
+	const bin = read(cli);
+	dynamicImports(bin, 'bin/catati-dev.mjs');
+	visit(cli, [...staticImports(bin), ...dynamicImports(commandEntry(bin, 'check-merge'), 'bin/catati-dev.mjs')]);
 	return [...seen, 'package.json'].sort();
 }
+
+test('the closure follows the check-merge entry and refuses an import it cannot follow', () => {
+	const bin = readFileSync(cli, 'utf8');
+	const withBin = (text) => (file) => (file === cli ? text : readFileSync(file, 'utf8'));
+	const edit = (from, to) => {
+		assert.ok(bin.includes(from));
+		return withBin(bin.replace(from, to));
+	};
+	assert.ok(gateClosure(edit("'check-merge': async () => (", "'check-merge': async () => (await import('../lib/setup.mjs'), ")).includes('lib/setup.mjs'));
+	assert.ok(gateClosure(edit("import('../lib/check-merge.mjs')", "import(new URL('../lib/check.mjs', import.meta.url))")).includes('lib/check.mjs'));
+	assert.throws(() => gateClosure(edit("import('../lib/check-merge.mjs')", "import(`../lib/${'check-merge'}.mjs`)")), /not a literal/);
+	assert.throws(() => gateClosure(withBin(`${bin}\nconst x = '../lib/setup.mjs';\nawait import(x);\n`)), /not a literal/);
+});
 
 test('every file the check-merge command loads, and package.json, is a one-way door', (t) => {
 	const closure = gateClosure();
@@ -127,6 +204,67 @@ test('every file the check-merge command loads, and package.json, is a one-way d
 	const base = commit({ 'README.md': 'a\n' });
 	const head = commit(Object.fromEntries(closure.map((path) => [path, 'x\n'])));
 	assert.deepEqual(run([base, head]), { status: 1, lines: closure.map((path) => `one-way-door: ${path}`) });
+});
+
+const newlinePaths = [
+	'a\nb/Makefile',
+	'a\nb/package.json',
+	'p\nq/migrations/1.sql',
+	'.github/workflows/x\ny.yml',
+	'.github/workflows/ci\r.yml',
+	'a\rb/Makefile',
+	'a\u2028b/Makefile',
+	'a\u2029b/Makefile',
+];
+
+test('a door glob matches a path that holds a newline, a CR or a line separator', () => {
+	for (const path of newlinePaths) assert.ok(matchesDoorGlob(path), JSON.stringify(path));
+	assert.ok(!matchesDoorGlob('docs/a\nb.md'));
+});
+
+test('a path with a control character or line separator is itself a one-way door, printed escaped', (t) => {
+	const { commit, run } = repo(t);
+	const escaped = [
+		'a\\u000ab/Makefile',
+		'a\\u000ab/package.json',
+		'p\\u000aq/migrations/1.sql',
+		'.github/workflows/x\\u000ay.yml',
+		'.github/workflows/ci\\u000d.yml',
+		'a\\u000db/Makefile',
+		'a\\u2028b/Makefile',
+		'a\\u2029b/Makefile',
+	];
+	for (const [index, path] of newlinePaths.entries()) {
+		const base = commit({ 'README.md': `${index}\n` });
+		const head = commit({ [path]: 'x\n' });
+		assert.deepEqual(run([base, head]), { status: 1, lines: [`one-way-door: ${escaped[index]}`] }, JSON.stringify(path));
+	}
+	const base = commit({ 'README.md': 'end\n' });
+	const head = commit({ 'docs/a\tb.md': 'x\n', 'docs/c\u007fd.md': 'x\n', 'docs/e\u0001f.md': 'x\n' });
+	assert.deepEqual(run([base, head]), {
+		status: 1,
+		lines: ['one-way-door: docs/a\\u0009b.md', 'one-way-door: docs/c\\u007fd.md', 'one-way-door: docs/e\\u0001f.md'],
+	});
+});
+
+for (const dir of ['.githooks', '.github', '.claude/hooks', 'migrations', 'functions/migrations']) {
+	test(`a symlink or gitlink at the bare ${dir} path is a one-way door`, (t) => {
+		const { commit, link, gitlink, run } = repo(t);
+		const base = commit({ 'README.md': 'a\n', 'hooks/pre-push': 'exit 0\n' });
+		const linked = link(dir, '../hooks');
+		assert.deepEqual(run([base, linked]), { status: 1, lines: [`one-way-door: ${dir}`] });
+		const unlinked = commit({}, { remove: [dir] });
+		assert.deepEqual(run([base, unlinked]), clean);
+		assert.deepEqual(run([unlinked, gitlink(dir)]), { status: 1, lines: [`one-way-door: ${dir}`] });
+	});
+}
+
+test('an unknown or inherited command name prints usage and exits with 2', () => {
+	for (const name of ['constructor', '__proto__', 'toString', 'nope']) {
+		const { status, stderr } = spawnSync(process.execPath, [cli, name], { encoding: 'utf8' });
+		assert.equal(status, 2, name);
+		assert.match(stderr, /^usage: catati-dev </, name);
+	}
 });
 
 test('a rename into or out of a door path is a one-way door', (t) => {
