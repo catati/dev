@@ -12,7 +12,7 @@ Each field of the environment form has one source here. Change the file, not the
 
 ## Conventions
 
-`conventions/` holds the rules every Catati repo follows. `templates/` holds the files every repo carries unchanged.
+`conventions/` holds the rules every Catati repo follows. `templates/` holds the files that `catati-dev setup` and `catati-dev session-start` write.
 Each rule names its check. A rule marked `catati-dev check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
@@ -100,6 +100,38 @@ The entry calls the installed binary directly. `npx --no-install catati-dev` ask
 A fresh clone has no `node_modules`, so the hook prints `not found` until the repo installs. To set up a fresh clone, also run `node_modules/.bin/catati-dev session-start` as the last step of `make install`.
 
 A session whose primary directory is not a repo runs no repo's SessionStart hook. For those sessions, [env/setup.sh](env/setup.sh) writes the same rule before Claude starts, with the same "only when missing" test. `npm test` fails when the copy in `env/setup.sh` differs from `templates/pstack-models.md`.
+
+## Run `catati-dev setup` to set a repo up to the standard
+
+`catati-dev setup` writes the files every Catati repo carries, in the git repo that holds the current directory.
+Run it again at any time to bring the repo up to date. A run on a repo that is already up to date changes nothing.
+
+| File | What `setup` does |
+| --- | --- |
+| `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
+| `.github/pull_request_template.md` | Copies `templates/pull_request_template.md`. |
+| `.github/CODEOWNERS` | Adds each line of `templates/CODEOWNERS` that the file lacks, at the end and in template order. |
+| `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
+| `.node-version` | Copies `templates/node-version`, which holds `24`. |
+| `.claude/settings.json` | Adds each entry of `templates/claude-settings.json` that the file lacks. The template asks before `gh pr merge` and before the GitHub MCP merge tool. |
+
+It prints one line per file, as `created <path>`, `updated <path>` or `unchanged <path>`.
+A copy replaces the whole file when one byte differs, and keeps the file's mode.
+The CODEOWNERS merge keeps every line the repo already has, so a repo can add its own owner rules.
+The settings merge keeps every key the repo already has, and adds new list entries at the end of the list.
+If a merge cannot keep the file's own bytes, it prints `skipped <path>: <reason>` and leaves the file as is.
+An example is a file that a JSON rewrite would reformat, or a `permissions.ask` that is not a list.
+It also skips a managed path that is not a regular file, such as a symlink.
+It skips a managed path whose parent directory, such as `.github`, is a symlink. If the link leads out of the repo, the line reads `skipped <path>: resolves outside the repo`.
+A link that stays in the repo is skipped too. Git commits the link, not the files behind it, so the files would land at a path the standard does not name.
+
+After the files, it prints the findings of `catati-dev check`, such as a missing `e2e` target. Those are the changes `setup` does not make.
+With `--dry-run`, it prints the same lines and writes nothing. The findings then show what would be left after a real run.
+It exits with 0, also when it prints findings. If it cannot run, for example outside a git repo, it prints one line on stderr and exits with 2.
+If it skipped a file, its last line goes to stderr, as `catati-dev: setup skipped <n> file(s); the standard is not fully applied`, and it still exits with 0.
+A caller such as a skill reads stderr to learn that the repo needs a person to look at the skipped files.
+
+`setup` does not touch the `Makefile`, the CI workflows, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
 
 ## Change process
 

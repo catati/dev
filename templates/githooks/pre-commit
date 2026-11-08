@@ -1,0 +1,2 @@
+#!/bin/sh
+make staged-check || { echo "Commit refused. Run make format for formatting, fix the rest, then commit again."; exit 1; }
