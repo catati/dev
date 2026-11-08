@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -30,6 +30,17 @@ test('the marketplace entry name matches the manifest name', () => {
 
 test('the plugin has no top-level bin directory, which claude.ai rejects', () => {
 	assert.equal(existsSync(join(pluginRoot, 'bin')), false);
+});
+
+test('each skill names its own folder and has a description', () => {
+	const skills = join(pluginRoot, 'skills');
+	const names = readdirSync(skills);
+	assert.deepEqual(names, ['repo-setup']);
+	for (const name of names) {
+		const frontmatter = readFileSync(join(skills, name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
+		assert.match(frontmatter, new RegExp(`^name: ${name}$`, 'm'));
+		assert.match(frontmatter, /^description: \S/m);
+	}
 });
 
 test('the SessionStart hook runs the probe from the plugin root', () => {

@@ -133,6 +133,21 @@ A caller such as a skill reads stderr to learn that the repo needs a person to l
 
 `setup` does not touch the `Makefile`, the CI workflows, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
 
+## Use the `catati` plugin
+
+This repo is also a Claude Code plugin marketplace, `.claude-plugin/marketplace.json`, with one plugin, `catati`, in `plugins/catati/`.
+The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo has one.
+
+The operator adds the marketplace at account level on claude.ai. Account plugins sync into sessions started from the app, not into sessions started through the sessions API (#25).
+A synced plugin holds only its own folder, so the skill cannot run the repo's `bin/`. It installs the package into the target repo instead.
+
+| Part | What it does |
+| --- | --- |
+| `/catati:repo-setup` | Pins `catati-dev` in the target repo at the head of `main`, runs `catati-dev setup`, adds the `CLAUDE.md` poteto line, the conventions link and the rule table, then opens one PR. Run it again after each `catati/dev` release. |
+| SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
+
+The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
+
 ## Change process
 
 1. Change the files here in a PR.
