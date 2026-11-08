@@ -5,13 +5,13 @@ description: Set a Catati repo up to the catati/dev standard, or bring it up to 
 
 # Repo setup
 
-Run this in the git repo the person names, or the one that holds the current directory. Each run converges the repo on the standard, so a second run on an up-to-date repo changes nothing and opens no PR.
+Run this in the git repo the person names, or the one that holds the current directory. Each run converges the repo on the standard. A run changes nothing and opens no PR when the repo is up to date and `catati/dev` `main` has not moved since the last pin. A moved pin alone is a real update and gets a PR.
 
 `catati-dev setup` writes every mechanical file. This skill pins the package, runs it, does the `CLAUDE.md` judgment steps, and opens one PR.
 
 ## 1. Branch
 
-The base branch is `main`, or `dev` in `catati-horizon`. Work on the branch the session was assigned. If `HEAD` is the base branch, create `repo-setup` from it. Every commit and push goes to that work branch.
+The base branch is `main`, or `dev` in `catati-horizon`. Work on the branch the session was assigned. If `HEAD` is the base branch, run `git fetch origin <base>` and create `repo-setup` from `origin/<base>`, so the branch starts from the current base. Every commit and push goes to that work branch.
 
 ## 2. Pin `catati-dev`
 
@@ -42,11 +42,11 @@ Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep eve
    - issue and PR titles are `<area>: <outcome>`;
    - the PR template starts with `## Why`;
    - merges are squash only, and only the operator merges;
-   - a cloud session works on its assigned branch, cut from the base branch.
+   - a cloud session works on its assigned branch, cut from `main`. `catati-horizon` cuts from `dev` and targets `dev` until its spike.
 
    Add each override the file already states elsewhere, such as its PR format. One line holds them all.
 2. **The conventions link.** The file links to `https://github.com/catati/dev/tree/main/conventions` as the shared rules.
-3. **The rule table.** The table lists only rules that hold in this repo alone; the conventions link covers the shared ones. Delete any row, or prose copy, that restates a rule in `node_modules/catati-dev/conventions/`. A table with the columns `Rule` and `Enforced by` pairs each remaining rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati-dev check` as the enforcer only when `make verify` runs it. State each rule once: when the table holds a rule, delete its prose copy elsewhere in the file.
+3. **The rule table.** The table lists only rules that hold in this repo alone; the conventions link covers the shared ones. Delete any row, or prose copy, that restates a rule in `node_modules/catati-dev/conventions/`. When `CLAUDE.md` has no rule table, create one with the columns `Rule` and `Enforced by`. The table pairs each remaining rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati-dev check` as the enforcer only when `make verify` runs it. State each rule once: when the table holds a rule, delete its prose copy elsewhere in the file.
 
 ## 5. Commit and open the PR
 
@@ -55,7 +55,8 @@ Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep eve
 3. Push the work branch. Never push the base branch.
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch:
    - Title: `repo: Set the repo up to the catati/dev standard`.
-   - Body: the repo's `.github/pull_request_template.md`, every section kept. Use `Closes #N` for the issue that asked for this run, or `Refs catati/dev#8` when none did. Evidence quotes the setup output and lists each remaining finding and skipped file as a named gap.
+   - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`, and note in it that it is part of catati/dev#8.
+   - Body: the repo's `.github/pull_request_template.md`, every section kept, with `Closes #<N>` for that issue. Evidence quotes the setup output and lists each remaining finding and skipped file as a named gap.
 5. Leave the merge to the operator.
 
 ## 6. Report
