@@ -28,6 +28,10 @@ function sandbox(t, { git = true, githooks = true, files = {} } = {}) {
 			writeFileSync(join(bin, name), `#!/bin/sh\necho ${output}\n`);
 			chmodSync(join(bin, name), 0o755);
 		},
+		stall(name) {
+			writeFileSync(join(bin, name), '#!/bin/sh\nexec sleep 30\n');
+			chmodSync(join(bin, name), 0o755);
+		},
 		hooksPath: () => spawnSync('git', ['config', '--get', 'core.hooksPath'], { cwd: root, encoding: 'utf8', env }).stdout.trim(),
 		run(from = root) {
 			const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'session-start'], { cwd: from, encoding: 'utf8', env });
@@ -109,6 +113,20 @@ test('a pnpm that differs from packageManager is a warning', (t) => {
 	assert.deepEqual(box.run(), { status: 0, lines: ['catati-dev: corepack runs pnpm 10.4.1, but packageManager asks for 10.30.3'] });
 	box.fake('corepack', '10.30.3');
 	assert.deepEqual(box.run(), { status: 0, lines: [] });
+});
+
+test('a corepack that hangs is a warning within the time bound', (t) => {
+	const box = sandbox(t, { files: { 'package.json': '{ "packageManager": "pnpm@10.30.3" }\n' } });
+	box.stall('corepack');
+	const started = performance.now();
+	const result = box.run();
+	const seconds = (performance.now() - started) / 1000;
+	assert.deepEqual(result, {
+		status: 0,
+		lines: ['catati-dev: corepack pnpm --version timed out after 3 s, so pnpm 10.30.3 from packageManager is not available'],
+	});
+	assert.ok(seconds < 5, `took ${seconds.toFixed(1)} s`);
+	assert.equal(box.hooksPath(), '.githooks');
 });
 
 test('env/setup.sh carries the model rule byte for byte', () => {
