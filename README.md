@@ -19,6 +19,45 @@ Each rule names its check. A rule marked `catati-dev check` fails `make verify` 
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
 - [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, PR sections and evidence.
 
+## Run `catati-dev check` in `make verify`
+
+`catati-dev check` runs in the repo root and checks the rules marked `catati-dev check` in `conventions/`.
+It compares the repo with the `templates/` folder of the installed package, so it needs no network.
+It prints one line per finding, as `<check>: <path>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
+
+| Check | Fails when |
+| --- | --- |
+| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` or `.github/pull_request_template.md` is missing or differs by a byte from `templates/`. |
+| `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint` or `help` target. |
+| `ci-workflow` | `.github/workflows/ci.yml` is missing. |
+| `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
+
+To install the package, add it as a dev dependency pinned to a commit of this repo:
+
+```sh
+pnpm add -D github:catati/dev#<sha>
+npm install -D github:catati/dev#<sha>
+```
+
+Then call it from the `verify` target:
+
+```make
+verify: lint test
+	npx catati-dev check
+```
+
+Other repos can install the package only when `catati/dev` is public (#15).
+
+To accept a finding for a time, add this line to the file that has the finding:
+
+```text
+# catati-dev-allow(<check>): <reason>; expires YYYY-MM-DD
+```
+
+The line turns off that check for that file until the end of the date. A file that cannot hold a comment, such as a template, takes its line in `.catati-dev-allow` at the repo root, one line per check. There the line turns off the check for the whole repo. An expired or malformed allow line is a finding with the check `allow`.
+
+To test the package, run `npm test`.
+
 ## Change process
 
 1. Change the files here in a PR.
