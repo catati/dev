@@ -66,6 +66,7 @@ An expired or malformed allow line is a finding with the check `allow`.
 A date that does not exist, such as `2026-02-31`, makes the line malformed.
 
 To test the package, run `npm test`.
+The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `npm test` on every PR and on each push to `main`.
 
 ## Run `catati-dev session-start` at session start
 
