@@ -1,0 +1,5 @@
+/.github/workflows/ @catati-ops
+/.github/CODEOWNERS @catati-ops
+/Makefile @catati-ops
+/.claude/settings.json @catati-ops
+/.githooks/ @catati-ops

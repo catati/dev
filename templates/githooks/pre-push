@@ -1,0 +1,8 @@
+#!/bin/sh
+while read -r _ _ remote_ref _; do
+  if [ "$remote_ref" = refs/heads/main ]; then
+    echo "Push refused: main changes only through a merged PR."
+    exit 1
+  fi
+done
+make lint || { echo "Push refused. Run make format for formatting, fix the rest, then push again."; exit 1; }
