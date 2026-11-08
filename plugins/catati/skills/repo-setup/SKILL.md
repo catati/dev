@@ -46,7 +46,7 @@ Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep eve
 
    Add each override the file already states elsewhere, such as its PR format. One line holds them all.
 2. **The conventions link.** The file links to `https://github.com/catati/dev/tree/main/conventions` as the shared rules.
-3. **The rule table.** A table with the columns `Rule` and `Enforced by` pairs every rule the file states with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati-dev check` as the enforcer only when `make verify` runs it. State each rule once: when the table holds a rule, delete its prose copy elsewhere in the file.
+3. **The rule table.** The table lists only rules that hold in this repo alone; the conventions link covers the shared ones. Delete any row, or prose copy, that restates a rule in `node_modules/catati-dev/conventions/`. A table with the columns `Rule` and `Enforced by` pairs each remaining rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati-dev check` as the enforcer only when `make verify` runs it. State each rule once: when the table holds a rule, delete its prose copy elsewhere in the file.
 
 ## 5. Commit and open the PR
 
