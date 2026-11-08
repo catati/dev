@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -27,7 +27,8 @@ function sandbox(t, { git = true, files = {} } = {}) {
 	t.after(() => rmSync(parent, { recursive: true, force: true }));
 	const root = join(parent, 'repo');
 	const home = join(parent, 'home');
-	for (const dir of [root, home]) mkdirSync(dir);
+	const outside = join(parent, 'outside');
+	for (const dir of [root, home, outside]) mkdirSync(dir);
 	if (git) execFileSync('git', ['init', '-q'], { cwd: root });
 	for (const [path, content] of Object.entries(files)) {
 		mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -36,6 +37,7 @@ function sandbox(t, { git = true, files = {} } = {}) {
 	const env = { ...process.env, HOME: home, GIT_CEILING_DIRECTORIES: parent };
 	return {
 		root,
+		outside,
 		file: (path) => readFileSync(join(root, path)),
 		run(...args) {
 			const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'setup', ...args], { cwd: root, encoding: 'utf8', env });
@@ -59,6 +61,16 @@ function sandbox(t, { git = true, files = {} } = {}) {
 		},
 	};
 }
+
+function tree(dir) {
+	return readdirSync(dir, { recursive: true, withFileTypes: true }).map((entry) => {
+		const full = join(entry.parentPath, entry.name);
+		const { mode, mtimeMs } = lstatSync(full);
+		return { full, mode, mtimeMs, bytes: entry.isFile() ? readFileSync(full) : undefined };
+	});
+}
+
+const skips = ({ lines }) => lines.filter((line) => line.startsWith('skipped '));
 
 const isExecutable = (box, path) => (statSync(join(box.root, path)).mode & 0o111) === 0o111;
 
@@ -157,6 +169,51 @@ test('a managed path that is a symlink is left as is', (t) => {
 	assert.ok(box.run().lines.includes('skipped .github/CODEOWNERS: is not a regular file; left as is'));
 	assert.ok(lstatSync(join(box.root, '.github', 'CODEOWNERS')).isSymbolicLink());
 	assert.equal(readlinkSync(join(box.root, '.github', 'CODEOWNERS')), '../shared/CODEOWNERS');
+});
+
+test('a managed directory that is a symlink out of the repo is skipped, and nothing outside changes', async (t) => {
+	const cases = {
+		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md', '.github/CODEOWNERS'],
+		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
+		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
+		'.claude': ['.claude/settings.json'],
+	};
+	for (const [dir, skipped] of Object.entries(cases)) {
+		await t.test(dir, (t) => {
+			const box = sandbox(t);
+			writeFileSync(join(box.outside, 'keep'), 'outside\n');
+			mkdirSync(dirname(join(box.root, dir)), { recursive: true });
+			symlinkSync(box.outside, join(box.root, dir));
+			const before = tree(box.outside);
+			const result = box.run();
+			assert.equal(result.status, 0);
+			assert.deepEqual(skips(result), skipped.map((path) => `skipped ${path}: resolves outside the repo`));
+			assert.deepEqual(tree(box.outside), before);
+			assert.equal(readlinkSync(join(box.root, dir)), box.outside);
+		});
+	}
+});
+
+test('a managed directory that is a symlink to another place in the repo is skipped', (t) => {
+	const box = sandbox(t, { files: { 'shared/hooks/README': 'shared\n' } });
+	symlinkSync('shared/hooks', join(box.root, '.githooks'));
+	const before = tree(join(box.root, 'shared'));
+	const result = box.run();
+	assert.equal(result.status, 0);
+	assert.deepEqual(skips(result), [
+		'skipped .githooks/pre-commit: has a parent directory that is a symlink; left as is',
+		'skipped .githooks/pre-push: has a parent directory that is a symlink; left as is',
+	]);
+	assert.deepEqual(tree(join(box.root, 'shared')), before);
+});
+
+test('a dangling symlinked directory is skipped', (t) => {
+	const box = sandbox(t);
+	symlinkSync(join(box.outside, 'gone'), join(box.root, '.claude'));
+	const result = box.run();
+	assert.equal(result.status, 0);
+	assert.deepEqual(skips(result), ['skipped .claude/settings.json: resolves outside the repo']);
+	assert.equal(existsSync(join(box.outside, 'gone')), false);
 });
 
 test('--dry-run prints what a run would do and writes nothing', (t) => {
