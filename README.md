@@ -44,8 +44,8 @@ Cloudflare is the only serverless provider. Firebase is being removed, so this e
 | Repo | Install in a session | Gap against the repo contract | Notes |
 |---|---|---|---|
 | `catsper` | `make install` | None. `make install` already runs `playwright install chromium`. | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. |
-| `cat-hotel` | `pnpm install`, then `make install` | Install step does not run `playwright install chromium`. | `wrangler` is already a devDependency. |
-| `agents` | `make tools-install` | `make tools-install` runs only `pnpm install`; it does not install the pinned `shfmt` and `shellcheck` that CI downloads. | Python comes from `requires-python` in `tools/product-labels/pyproject.toml`. `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
+| `cat-hotel` | `pnpm install`, then `make install` | None. `make install` runs `playwright install chromium` (catati/cat-hotel#223). | `wrangler` is already a devDependency. |
+| `agents` | `make tools-install` | Fixed on `dev` only (catati/agents#570): `make tools-install` installs the pinned `shfmt` and `shellcheck`. Open until it reaches `main`, the default branch that cloud sessions clone. | Python comes from `requires-python` in `tools/product-labels/pyproject.toml`. `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
 | `catati-horizon` | `npm ci` | `@shopify/cli` is not a devDependency; `jq` (used by `scripts/check-theme.sh`) is not declared; install step does not run `playwright install chromium`. | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
 | `branding` | None yet | No `package.json` for `wrangler`; no `pyproject.toml` for `fonttools` and `brotli` (`scripts/build-fonts.py`). | |
 | `knowledge` | `make install` | `make install` does not install the pinned `gitleaks`; `make secrets` skips the scan when it is missing. | |
