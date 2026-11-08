@@ -237,6 +237,19 @@ test('a dangling symlinked directory is skipped', (t) => {
 	assert.equal(existsSync(join(box.outside, 'gone')), false);
 });
 
+test('a run that skips a file ends with one line on stderr and exits with 0', async (t) => {
+	for (const args of [[], ['--dry-run']]) {
+		await t.test(args.join(' ') || 'a real run', (t) => {
+			const box = sandbox(t, { files: { '.claude/settings.json': '[]\n' } });
+			symlinkSync(box.outside, join(box.root, '.githooks'));
+			const result = box.run(...args);
+			assert.equal(result.status, 0);
+			assert.equal(skips(result).length, 3);
+			assert.deepEqual(result.errors, ['catati-dev: setup skipped 3 file(s); the standard is not fully applied']);
+		});
+	}
+});
+
 test('--dry-run prints what a run would do and writes nothing', (t) => {
 	const box = sandbox(t, { files: { '.claude/settings.json': agentsStyle, '.node-version': '22\n' } });
 	const before = box.treeHash();
