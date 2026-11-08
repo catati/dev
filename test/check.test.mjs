@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
@@ -23,17 +23,29 @@ function cleanRepo() {
 	};
 }
 
-function runCheck(files, t) {
-	const root = mkdtempSync(join(tmpdir(), 'catati-dev-'));
-	t.after(() => rmSync(root, { recursive: true, force: true }));
-	execFileSync('git', ['init', '-q'], { cwd: root });
+function runCheck(files, t, { git = true, from = '' } = {}) {
+	const parent = mkdtempSync(join(tmpdir(), 'catati-dev-'));
+	t.after(() => rmSync(parent, { recursive: true, force: true }));
+	const root = join(parent, 'repo');
+	mkdirSync(join(root, from), { recursive: true });
+	if (git) execFileSync('git', ['init', '-q'], { cwd: root });
 	for (const [path, content] of Object.entries(files)) {
 		if (content === undefined) continue;
 		mkdirSync(dirname(join(root, path)), { recursive: true });
-		writeFileSync(join(root, path), content);
+		if (content instanceof Link) symlinkSync(content.target, join(root, path));
+		else writeFileSync(join(root, path), content);
 	}
-	const { status, stdout } = spawnSync(process.execPath, [cli, 'check'], { cwd: root, encoding: 'utf8' });
-	return { status, lines: stdout.split('\n').filter(Boolean) };
+	const env = { ...process.env, GIT_CEILING_DIRECTORIES: parent };
+	const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'check'], { cwd: join(root, from), encoding: 'utf8', env });
+	const lines = stdout.split('\n').filter(Boolean);
+	const errors = stderr.split('\n').filter(Boolean);
+	return errors.length > 0 ? { status, lines, errors } : { status, lines };
+}
+
+class Link {
+	constructor(target) {
+		this.target = target;
+	}
 }
 
 test('a repo that follows every rule passes', (t) => {
@@ -89,4 +101,13 @@ test('a repo-level allow covers files that cannot hold a comment', (t) => {
 		'.catati-dev-allow': 'catati-dev-allow(templates-equal): migrating to the shared template; expires 2999-01-01\n',
 	};
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
+});
+
+test('a run from a subdirectory checks the whole repo', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'web/app.js': '' }, t, { from: 'web' }), { status: 0, lines: [] });
+	const files = { ...cleanRepo(), '.github/workflows/ci.yml': undefined, 'web/example.env': 'KEY=\n' };
+	assert.deepEqual(runCheck(files, t, { from: 'web' }), {
+		status: 1,
+		lines: ['ci-workflow: .github/workflows/ci.yml: file is missing', 'env-example: web/example.env: env template is not named .env.example'],
+	});
 });
