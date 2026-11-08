@@ -125,3 +125,11 @@ test('a file it cannot read prints one line naming the path and exits with 2', (
 	assert.deepEqual({ status, lines, errors: errors?.length }, { status: 2, lines: [], errors: 1 });
 	assert.match(errors[0], /^catati-dev: cannot read Makefile: ELOOP$/);
 });
+
+test('an allow line with a date that does not exist is malformed', (t) => {
+	const line = 'catati-dev-allow(env-example): tool reads this name; expires 2999-02-31';
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${line}\nKEY=\n` }, t), {
+		status: 1,
+		lines: ['env-example: example.env: env template is not named .env.example', `allow: example.env: malformed allow: # ${line}`],
+	});
+});
