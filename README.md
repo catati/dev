@@ -6,14 +6,14 @@ Each field of the environment form has one source here. Change the file, not the
 | Form field | Source |
 |---|---|
 | Name | `catati-dev` |
-| Network access | Custom: paste [network-allowlist.txt](network-allowlist.txt), tick "also allow default package managers" |
-| Environment variables | Paste [example.env](example.env), then fill the blank secrets in the form. Dev values only: every user of the environment can read them. |
-| Setup script | Paste [setup.sh](setup.sh) |
+| Network access | Custom: paste [env/network-allowlist.txt](env/network-allowlist.txt), tick "also allow default package managers" |
+| Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank secrets in the form. Dev values only: every user of the environment can read them. |
+| Setup script | Paste [env/setup.sh](env/setup.sh) |
 
 ## Change process
 
 1. Change the files here in a PR.
-2. After merge, paste each changed file into its field on claude.ai/code. The form has no API, so this step is manual. Exception: while the gap table below has open rows, do not paste [setup.sh](setup.sh).
+2. After merge, paste each changed file into its field on claude.ai/code. The form has no API, so this step is manual. Exception: while the gap table below has open rows, do not paste [env/setup.sh](env/setup.sh).
 3. Start a new cloud session and run the checks below.
 
 ## Checks for a new session
@@ -31,7 +31,7 @@ Each repo declares every other tool it needs, so its own install step sets it up
 - Native binaries (`shfmt`, `shellcheck`, `gitleaks`): an install target that downloads a pinned version and checks its SHA-256.
 - Playwright browsers: `playwright install chromium` in the install step.
 
-Do not add a repo tool to [setup.sh](setup.sh). Fix the repo instead.
+Do not add a repo tool to [env/setup.sh](env/setup.sh). Fix the repo instead.
 
 ## GitHub access
 
@@ -50,13 +50,13 @@ Cloudflare is the only serverless provider. Firebase is being removed, so this e
 | `branding` | `npm ci`; Python scripts through `uv run` | None. `package.json` pins `wrangler`; `pyproject.toml` declares `fonttools` and `brotli` (catati/branding#5). | |
 | `knowledge` | `make install` | None. `make install` runs `gitleaks-install` (catati/knowledge#13). | |
 
-Paste the current [setup.sh](setup.sh) into the environment form after each merge that changes it. A row with an open gap means that repo's sessions lack the tool until the repo's fix reaches `main`. Set a row's gap to "None" when that fix reaches `main`.
+Paste the current [env/setup.sh](env/setup.sh) into the environment form after each merge that changes it. A row with an open gap means that repo's sessions lack the tool until the repo's fix reaches `main`. Set a row's gap to "None" when that fix reaches `main`.
 
 Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `ads`, `products`, `catati-products` (no Git remote).
 
-## Rules for example.env
+## Rules for env/.env.example
 
-- Non-secret value: commit it in [example.env](example.env).
+- Non-secret value: commit it in [env/.env.example](env/.env.example).
 - Secret value: keep the name with a blank value here; fill the value only in the form.
 - A value that differs per repo does not belong here: commit it in that repo.
 
