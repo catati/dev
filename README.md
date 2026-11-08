@@ -74,6 +74,8 @@ To test the package, run `npm test`.
 1. If the repo has a `.githooks` folder and `core.hooksPath` is unset, it sets `git config core.hooksPath .githooks`. If `core.hooksPath` already names another folder, such as `.husky`, it keeps that value and prints a warning.
 2. If `~/.claude/rules/pstack-models.md` is missing, it copies `templates/pstack-models.md` there. It never replaces a rule you already have.
 3. It checks that `node` is 24.15 or later. If `package.json` has `packageManager: pnpm@<version>`, it checks that `corepack pnpm --version` prints that version.
+   The first run in a repo can download that pnpm version through corepack, about 1.5 s on a cold cache. The download fills the cache the repo's install step needs.
+   Each check stops after 3 s, so a session with no network starts with a `timed out` warning instead of a long wait.
 
 Each step reads the current state first, so a second run changes nothing.
 It prints one line on stdout per toolchain problem, as `catati-dev: <problem>`, and still exits with 0.
