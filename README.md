@@ -21,9 +21,11 @@ Each rule names its check. A rule marked `catati-dev check` fails `make verify` 
 
 ## Run `catati-dev check` in `make verify`
 
-`catati-dev check` runs in the repo root and checks the rules marked `catati-dev check` in `conventions/`.
+`catati-dev check` checks the rules marked `catati-dev check` in `conventions/`.
+It checks the whole git repo that holds the current directory, so you can run it from any subdirectory.
 It compares the repo with the `templates/` folder of the installed package, so it needs no network.
 It prints one line per finding, as `<check>: <path>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
+If it cannot run, for example outside a git repo or on a file it cannot read, it prints one line on stderr and exits with 2.
 
 | Check | Fails when |
 | --- | --- |
@@ -54,7 +56,14 @@ To accept a finding for a time, add this line to the file that has the finding:
 # catati-dev-allow(<check>): <reason>; expires YYYY-MM-DD
 ```
 
-The line turns off that check for that file until the end of the date. A file that cannot hold a comment, such as a template, takes its line in `.catati-dev-allow` at the repo root, one line per check. There the line turns off the check for the whole repo. An expired or malformed allow line is a finding with the check `allow`.
+The line turns off that check for every finding in the file that holds it, until the end of the date.
+It covers the whole file, not one line, because some findings have no line of their own. A missing `Makefile` target is an example.
+
+A file that cannot hold a comment, such as a template or a missing file, takes its line in `.catati-dev-allow` at the repo root, one line per check.
+A line in `.catati-dev-allow` turns off its check for the whole repo.
+
+An expired or malformed allow line is a finding with the check `allow`.
+A date that does not exist, such as `2026-02-31`, makes the line malformed.
 
 To test the package, run `npm test`.
 
