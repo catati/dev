@@ -7,7 +7,7 @@ Each field of the environment form has one source here. Change the file, not the
 |---|---|
 | Name | `catati-dev` |
 | Network access | Custom: paste [env/network-allowlist.txt](env/network-allowlist.txt), tick "also allow default package managers" |
-| Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank secrets in the form. Dev values only: every user of the environment can read them. |
+| Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank values in the form. Dev values only: every user of the environment can read them. |
 | Setup script | Paste [env/setup.sh](env/setup.sh) |
 
 ## Conventions
@@ -148,8 +148,11 @@ Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `
 
 ## Rules for env/.env.example
 
+Treat every committed value as public.
+
 - Non-secret value: commit it in [env/.env.example](env/.env.example).
 - Secret value: keep the name with a blank value here; fill the value only in the form.
+- A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL` and `SHOPIFY_SHOP`: keep the name with a blank value here; fill the value only in the form.
 - A value that differs per repo does not belong here: commit it in that repo.
 
 ## Not covered
