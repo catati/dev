@@ -18,6 +18,7 @@ Each rule names its check. A rule marked `catati-dev check` fails `make verify` 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
 - [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, PR sections and evidence.
+- [conventions/workflow.md](conventions/workflow.md) covers PR owners, verifiers, the `Verified at <sha>` comment and the merge-gate trial.
 
 ## Run `catati-dev check` in `make verify`
 
@@ -216,6 +217,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 | Part | What it does |
 | --- | --- |
 | `/catati:repo-setup` | Pins `catati-dev` in the target repo at the head of `main`, runs `catati-dev setup`, adds the `CLAUDE.md` poteto line, the conventions link and the rule table, then opens one PR. Run it again after each `catati/dev` release. |
+| `/catati:verify-pr <PR URL>` | Spawns an adversarial verifier on another model family at the PR's head SHA. On a pass it files each minor gap as an issue and posts the `Verified at <sha>` comment that [conventions/workflow.md](conventions/workflow.md) defines. It never merges or pushes. |
 | SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
