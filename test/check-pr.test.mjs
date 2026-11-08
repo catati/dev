@@ -37,6 +37,20 @@ test('a body without ## Why is a finding', () => {
 	});
 });
 
+test('a body without the > [!NOTE] card is a finding', () => {
+	assert.deepEqual(checkPr(pr({ PR_BODY: validBody.replace('> [!NOTE]\n', '') })), {
+		status: 1,
+		lines: ['body: has no "> [!NOTE]" in template order; copy .github/pull_request_template.md and fill every section'],
+	});
+});
+
+test('a body without ### Risk is a finding', () => {
+	assert.deepEqual(checkPr(pr({ PR_BODY: validBody.replace('### Risk\n', '') })), {
+		status: 1,
+		lines: ['body: has no "### Risk" in template order; copy .github/pull_request_template.md and fill every section'],
+	});
+});
+
 test('a body without Closes #N is a finding', () => {
 	assert.deepEqual(checkPr(pr({ PR_BODY: template })), { status: 1, lines: ['body: has no "Closes #<issue number>"'] });
 });
