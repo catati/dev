@@ -43,8 +43,8 @@ function repo(t) {
 		git('commit', '-q', '-m', 'gitlink');
 		return git('rev-parse', 'HEAD');
 	};
-	const run = (args, cwd = root) => {
-		const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'check-merge', ...args], { cwd, encoding: 'utf8', env });
+	const run = (args, cwd = root, extraEnv = {}) => {
+		const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'check-merge', ...args], { cwd, encoding: 'utf8', env: { ...env, ...extraEnv } });
 		const lines = stdout.split('\n').filter(Boolean);
 		const errors = stderr.split('\n').filter(Boolean);
 		return errors.length > 0 ? { status, lines, errors } : { status, lines };
@@ -332,4 +332,71 @@ test('a bad argument or a run outside a git repo prints one line and exits with 
 	assert.deepEqual(run(['nope', head]), { status: 2, lines: [], errors: ['catati-dev: check-merge: nope is not a commit'] });
 	assert.deepEqual(run(['--output=x', head]), { status: 2, lines: [], errors: ['catati-dev: check-merge: --output=x is not a commit'] });
 	assert.deepEqual(run(['a', 'b'], parent), { status: 2, lines: [], errors: ['catati-dev: not inside a git repository'] });
+});
+
+function submoduleCases(t, setup, ignore = '') {
+	const fixture = repo(t);
+	const { commit, gitlink, git, run } = fixture;
+	const base = commit({ 'README.md': 'a\n', '.gitmodules': `[submodule "vendor"]\n\tpath = vendor\n\turl = https://example.invalid/vendor.git\n${ignore}` });
+	const added = gitlink('vendor');
+	commit({ 'README.md': 'b\n' });
+	const bumped = gitlink('vendor');
+	git('rm', '-q', '--cached', 'vendor');
+	git('commit', '-q', '-m', 'drop');
+	const deleted = git('rev-parse', 'HEAD');
+	const extraEnv = setup(fixture) ?? {};
+	const submodule = { status: 1, lines: ['one-way-door: vendor (submodule)'] };
+	assert.deepEqual(run([base, added], fixture.root, extraEnv), submodule, 'add');
+	assert.deepEqual(run([added, bumped], fixture.root, extraEnv), submodule, 'bump');
+	assert.deepEqual(run([bumped, deleted], fixture.root, extraEnv), submodule, 'delete');
+}
+
+test('a .gitmodules entry with ignore = all does not hide a submodule add, bump or delete', (t) => {
+	submoduleCases(t, () => {}, '\tignore = all\n');
+});
+
+test('diff.ignoreSubmodules = all in the repo config does not hide a submodule change', (t) => {
+	submoduleCases(t, ({ git }) => {
+		git('config', 'diff.ignoreSubmodules', 'all');
+		git('config', 'submodule.vendor.ignore', 'all');
+	});
+});
+
+test('diff.ignoreSubmodules = all in ~/.gitconfig does not hide a submodule change', (t) => {
+	submoduleCases(t, ({ parent }) => {
+		const home = join(parent, 'home');
+		mkdirSync(home);
+		writeFileSync(join(home, '.gitconfig'), '[diff]\n\tignoreSubmodules = all\n');
+		return { HOME: home, XDG_CONFIG_HOME: join(home, '.config'), GIT_CONFIG_GLOBAL: join(home, '.gitconfig') };
+	});
+});
+
+test('diff.ignoreSubmodules = all in GIT_CONFIG_PARAMETERS does not hide a submodule change', (t) => {
+	submoduleCases(t, () => ({ GIT_CONFIG_PARAMETERS: "'diff.ignoreSubmodules'='all'" }));
+});
+
+test('diff.ignoreSubmodules = all in GIT_CONFIG_COUNT entries does not hide a submodule change', (t) => {
+	submoduleCases(t, () => ({ GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'diff.ignoreSubmodules', GIT_CONFIG_VALUE_0: 'all' }));
+});
+
+test('a replace ref or a graft does not hide the head tree', (t) => {
+	const { root, commit, git, run } = repo(t);
+	const base = commit({ 'README.md': 'a\n' });
+	const head = commit({ '.github/workflows/ci.yml': 'on: push\n' });
+	const door = { status: 1, lines: ['one-way-door: .github/workflows/ci.yml'] };
+	git('replace', head, base);
+	git('config', 'core.useReplaceRefs', 'true');
+	assert.deepEqual(run([base, head]), door);
+	git('replace', '-d', head);
+	writeFileSync(join(root, '.git/info/grafts'), `${base} ${head}\n`);
+	assert.deepEqual(run([base, head]), door);
+});
+
+test('a diff of thousands of long paths is read whole', (t) => {
+	const { commit, run } = repo(t);
+	const base = commit({ 'README.md': 'a\n' });
+	const dir = `docs/${'d'.repeat(200)}`;
+	const plain = commit(Object.fromEntries(Array.from({ length: 4000 }, (_, index) => [`${dir}/${index}-${'f'.repeat(100)}.md`, 'x\n'])));
+	assert.deepEqual(run([base, plain]), clean);
+	assert.deepEqual(run([base, commit({ Makefile: 'x\n' })]), { status: 1, lines: ['one-way-door: Makefile'] });
 });

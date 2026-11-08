@@ -175,6 +175,9 @@ Every entry ignores letter case. Catati deploys from macOS, where APFS reads `PA
 Any symlink or submodule (gitlink) that the diff adds, changes or removes is a match, whatever its path, and so is a file that becomes a symlink or a symlink that becomes a file.
 A link can point a plain path at a door file or directory, such as `.claude` at a folder that holds `settings.json`, or `other/sub2` at `../sub`, so no path list can catch it.
 
+Git config cannot hide a change from the gate. The gate's git calls skip the system and global config and drop config passed in `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT`. They also ignore replace refs and `.git/info/grafts`, which could swap the head tree or move the merge base.
+The repo's own `.git/config` still applies, so the diff itself sets every option that config could change: `--ignore-submodules=none` (over `diff.ignoreSubmodules`, `submodule.<name>.ignore` and `ignore = all` in `.gitmodules`), `--no-renames`, `--no-abbrev`, `--no-relative` and `-z`.
+
 | Path | Why it is a one-way door |
 | --- | --- |
 | `.github/**` | CI, required checks, branch protection, CODEOWNERS, composite actions and Dependabot. |
@@ -199,6 +202,7 @@ Lockfiles are not doors. CI and the verifier check a dependency bump, and a door
 
 It prints one line per match, as `one-way-door: <path>`, and exits with 1. A symlink adds ` (symlink)` and a submodule adds ` (submodule)` to its line, and a door path that is also a link prints once. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
+A failed git call or diff output it cannot parse also exits with 2. That covers only output git prints. An entry that git leaves out is unseen, which is why the gate sets the config that decides what git prints.
 
 The rule also names "anything touching production". No path list can prove that a change leaves production alone, so that part stays a judgment for the coordinator. Exit 0 means only that no listed path changed.
 A deploy script that a `Makefile` target calls, such as `scripts/deploy.sh`, is an example of a change the list does not see.
