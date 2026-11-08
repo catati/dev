@@ -144,6 +144,27 @@ test('a settings file the merge cannot rewrite safely is left as is', async (t) 
 	}
 });
 
+const repoOwners = ['/firestore.rules @catati-ops', '/docs/adr/ @catati-ops', ''].join('\n');
+
+test('a CODEOWNERS file that has every template line keeps its own lines', (t) => {
+	const content = `${repoOwners}\n${template('CODEOWNERS')}`;
+	const box = sandbox(t, { files: { '.github/CODEOWNERS': content } });
+	assert.ok(box.run().lines.includes('unchanged .github/CODEOWNERS'));
+	assert.equal(box.file('.github/CODEOWNERS').toString(), content);
+});
+
+test('CODEOWNERS gets the missing template lines at the end and keeps every other line', (t) => {
+	const lines = template('CODEOWNERS').toString().split('\n').filter(Boolean);
+	const content = `${repoOwners}${lines[1]}\n/Makefile @someone-else`;
+	const box = sandbox(t, { files: { '.github/CODEOWNERS': content } });
+	assert.ok(box.run().lines.includes('updated .github/CODEOWNERS'));
+	const missing = lines.filter((line) => line !== lines[1]);
+	assert.equal(box.file('.github/CODEOWNERS').toString(), `${content}\n${missing.join('\n')}\n`);
+	const before = box.snapshot();
+	assert.ok(box.run().lines.includes('unchanged .github/CODEOWNERS'));
+	assert.deepEqual(box.snapshot(), before);
+});
+
 test('a differing managed file is updated, and a hook gets its exec bit back', (t) => {
 	const box = sandbox(t, { files: { '.githooks/pre-push': '#!/bin/sh\nexit 0\n', '.node-version': '22\n' } });
 	chmodSync(join(box.root, '.githooks/pre-push'), 0o644);
