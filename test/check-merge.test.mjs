@@ -118,6 +118,14 @@ const doorExamples = [
 	'bin/catati-dev.mjs',
 	'lib/check-merge.mjs',
 	'lib/repo.mjs',
+	'MAKEFILE',
+	'PACKAGE.JSON',
+	'web/Package.Json',
+	'.GITHUB/x',
+	'.Claude/Settings.json',
+	'Firebase.json',
+	'Migrations/1.sql',
+	'LIB/CHECK-MERGE.MJS',
 ];
 
 for (const path of doorExamples) {
@@ -252,12 +260,39 @@ for (const dir of ['.githooks', '.github', '.claude/hooks', 'migrations', 'funct
 		const { commit, link, gitlink, run } = repo(t);
 		const base = commit({ 'README.md': 'a\n', 'hooks/pre-push': 'exit 0\n' });
 		const linked = link(dir, '../hooks');
-		assert.deepEqual(run([base, linked]), { status: 1, lines: [`one-way-door: ${dir}`] });
+		assert.deepEqual(run([base, linked]), { status: 1, lines: [`one-way-door: ${dir} (symlink)`] });
 		const unlinked = commit({}, { remove: [dir] });
 		assert.deepEqual(run([base, unlinked]), clean);
-		assert.deepEqual(run([unlinked, gitlink(dir)]), { status: 1, lines: [`one-way-door: ${dir}`] });
+		assert.deepEqual(run([linked, unlinked]), { status: 1, lines: [`one-way-door: ${dir} (symlink)`] });
+		assert.deepEqual(run([unlinked, gitlink(dir)]), { status: 1, lines: [`one-way-door: ${dir} (submodule)`] });
 	});
 }
+
+test('any symlink or gitlink that a diff adds, changes or removes is a one-way door', (t) => {
+	const { commit, link, gitlink, run } = repo(t);
+	const base = commit({ 'README.md': 'a\n', 'sub/Makefile': 'deploy:\n', 'docs/x.md': 'x\n' });
+	assert.deepEqual(run([base, link('.claude', 'sub')]), { status: 1, lines: ['one-way-door: .claude (symlink)'] });
+	const plain = commit({ 'docs/y.md': 'y\n' });
+	const gitlinked = gitlink('env');
+	assert.deepEqual(run([plain, gitlinked]), { status: 1, lines: ['one-way-door: env (submodule)'] });
+	const aliased = link('other/sub2', '../sub');
+	assert.deepEqual(run([gitlinked, aliased]), { status: 1, lines: ['one-way-door: env (submodule)', 'one-way-door: other/sub2 (symlink)'] });
+	const deleted = commit({}, { remove: ['other/sub2'] });
+	assert.deepEqual(run([aliased, deleted]), { status: 1, lines: ['one-way-door: other/sub2 (symlink)'] });
+	commit({}, { remove: ['docs/x.md'] });
+	const fileToLink = link('docs/x.md', '../sub/Makefile');
+	assert.deepEqual(run([deleted, fileToLink]), { status: 1, lines: ['one-way-door: docs/x.md (symlink)'] });
+	commit({}, { remove: ['docs/x.md'] });
+	const linkToFile = commit({ 'docs/x.md': 'x\n' });
+	assert.deepEqual(run([fileToLink, linkToFile]), { status: 1, lines: ['one-way-door: docs/x.md (symlink)'] });
+	assert.deepEqual(run([linkToFile, commit({ 'docs/x.md': 'y\n' })]), clean);
+});
+
+test('a door path that is also a symlink prints once', (t) => {
+	const { commit, link, run } = repo(t);
+	const base = commit({ 'README.md': 'a\n', 'settings.json': '{}\n' });
+	assert.deepEqual(run([base, link('.claude/settings.json', '../settings.json')]), { status: 1, lines: ['one-way-door: .claude/settings.json (symlink)'] });
+});
 
 test('an unknown or inherited command name prints usage and exits with 2', () => {
 	for (const name of ['constructor', '__proto__', 'toString', 'nope']) {
