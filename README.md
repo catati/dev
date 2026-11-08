@@ -167,12 +167,14 @@ A rename counts as a delete and an add, so a file that moves into or out of a do
 | --- | --- |
 | `.github/workflows/**`, `.github/rulesets/**` | CI, required checks and branch protection. |
 | `.claude/settings.json` | The permission prompts and sandbox rules of every session in the repo. |
+| `.githooks/**` | Git hooks run on every developer machine and can skip the local guards. |
 | `env/setup.sh` | The setup script of every cloud session. |
 | `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `firebase.json` | Deploy config. |
 | `firestore.rules`, `storage.rules` | The access rules of live data. |
 | `**/migrations/**` | Data migrations. |
 | `**/Makefile` | Only when a line of a `deploy-*` target is added, removed or changed. A change to other targets passes. |
 | `templates/pr-format.yml`, `templates/claude-settings.json`, `templates/githooks/**` | `catati-dev setup` copies these into the workflows, settings and Git hooks of every repo. |
+| `lib/check-merge.mjs` | The gate itself. It must not be able to pass a change to its own code. |
 
 It prints one line per match, as `one-way-door: <path>`, and exits with 1. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.

@@ -54,6 +54,7 @@ const doorExamples = [
 	'.github/workflows/ci.yml',
 	'.github/rulesets/main.json',
 	'.claude/settings.json',
+	'.githooks/pre-push',
 	'env/setup.sh',
 	'wrangler.toml',
 	'web/wrangler.json',
@@ -66,6 +67,7 @@ const doorExamples = [
 	'templates/pr-format.yml',
 	'templates/claude-settings.json',
 	'templates/githooks/pre-push',
+	'lib/check-merge.mjs',
 ];
 
 for (const path of doorExamples) {
