@@ -157,6 +157,29 @@ The job does not install the repo. It checks out only `package.json` and `.node-
 The same steps work for pnpm and npm repos, because both write the pin to `package.json` as `github:catati/dev#<sha>`. `catati-dev` has no dependencies, so the install takes about 2 s.
 The job fails when the pin is not `github:catati/dev#<full commit SHA>`. A branch or a short SHA could change under the repo.
 
+## Run `catati-dev check-merge` before a merge without the operator
+
+`catati-dev check-merge <base> <head>` checks rule 3 of the merge-gate trial in #8: the diff touches no one-way-door path.
+It lists the files that `git diff <base>...<head>` changes, in the git repo that holds the current directory, and matches each one against the list below.
+A rename counts as a delete and an add, so a file that moves into or out of a door path is a match.
+
+| Path | Why it is a one-way door |
+| --- | --- |
+| `.github/workflows/**`, `.github/rulesets/**` | CI, required checks and branch protection. |
+| `.claude/settings.json` | The permission prompts and sandbox rules of every session in the repo. |
+| `env/setup.sh` | The setup script of every cloud session. |
+| `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `firebase.json` | Deploy config. |
+| `firestore.rules`, `storage.rules` | The access rules of live data. |
+| `**/migrations/**` | Data migrations. |
+| `**/Makefile` | Only when a line of a `deploy-*` target is added, removed or changed. A change to other targets passes. |
+| `templates/pr-format.yml`, `templates/claude-settings.json`, `templates/githooks/**` | `catati-dev setup` copies these into the workflows, settings and Git hooks of every repo. |
+
+It prints one line per match, as `one-way-door: <path>`, and exits with 1. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
+With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
+
+The rule also names "anything touching production". No path list can prove that a change leaves production alone, so that part stays a judgment for the coordinator. Exit 0 means only that no listed path changed.
+A `Makefile` variable that a `deploy-*` target reads is an example of a change the list does not see.
+
 ## Use the `catati` plugin
 
 This repo is also a Claude Code plugin marketplace, `.claude-plugin/marketplace.json`, with one plugin, `catati`, in `plugins/catati/`.
