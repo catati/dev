@@ -7,10 +7,10 @@ const commands = {
 	setup: async () => (await import('../lib/setup.mjs')).setup,
 };
 
-const load = commands[process.argv[2]];
-if (!load) {
+const name = process.argv[2];
+if (!Object.hasOwn(commands, name)) {
 	console.error(`usage: catati-dev <${Object.keys(commands).join('|')}>`);
 	process.exit(2);
 }
-const command = await load();
+const command = await commands[name]();
 process.exitCode = command(process.cwd(), process.argv.slice(3));

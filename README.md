@@ -169,21 +169,29 @@ The job fails when the pin is not `github:catati/dev#<full commit SHA>`. A branc
 `catati-dev check-merge <base> <head>` checks rule 3 of the merge-gate trial in #8: the diff touches no one-way-door path.
 It lists the files that `git diff <base>...<head>` changes, in the git repo that holds the current directory, and matches each one against the list below.
 A rename counts as a delete and an add, so a file that moves into or out of a door path is a match.
+A `<dir>/**` entry also matches the bare `<dir>`, so a symlink or a submodule that replaces the whole directory is a match.
 
 | Path | Why it is a one-way door |
 | --- | --- |
 | `.github/**` | CI, required checks, branch protection, CODEOWNERS, composite actions and Dependabot. |
 | `.claude/settings.json` | The permission prompts and sandbox rules of every session in the repo. |
 | `.githooks/**` | Git hooks run on every developer machine and can skip the local guards. |
+| `.claude/hooks/**` | Claude Code hooks run on every session. |
+| `.gitmodules` | Where each submodule is fetched from. |
+| `**/.npmrc` | The registry that installs, deploys included, fetch packages from. |
 | `env/setup.sh` | The setup script of every cloud session. |
 | `**/package.json` | Deploy and release scripts live in `scripts`. In catati/dev, `bin` also names the gate's entry point. |
 | `**/Makefile`, `**/makefile`, `**/GNUmakefile`, `**/*.mk` | Deploy targets. A variable or an `include` can change one without touching its lines, so any change counts. |
-| `**/Dockerfile`, `**/docker-compose*` | What the deployed containers run. |
-| `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. |
+| `**/Dockerfile`, `**/Dockerfile.*`, `**/*.Dockerfile`, `**/Containerfile`, `**/Containerfile.*`, `**/*.Containerfile`, `**/compose*.yml`, `**/compose*.yaml`, `**/docker-compose*` | What the deployed containers run. These entries ignore case, so `dockerfile` and `app.dockerfile` match. |
+| `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
 | `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. |
 | `**/migrations/**` | Data migrations. |
 | `templates/pr-format.yml`, `templates/claude-settings.json`, `templates/githooks/**`, `templates/CODEOWNERS`, `templates/pull_request_template.md` | `catati-dev setup` copies these into the workflows, settings, Git hooks, code owners and PR template of every repo. |
-| `bin/catati-dev.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test fails when `check-merge` loads a module outside this list. |
+| `bin/catati-dev.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test follows the `check-merge` entry of the command table and fails when it loads a module outside this list, or when any module it loads has an `import()` whose target is not a literal. |
+
+A changed path that holds a control character (U+0000 to U+001F or U+007F) or a line or paragraph separator (U+2028, U+2029) is a match whatever its name. No real file needs such a name, and the gate cannot be sure what a tool downstream makes of it. The gate prints that path with each such character as `\uXXXX`.
+
+Lockfiles are not doors. CI and the verifier check a dependency bump, and a door on every lockfile would send every bump to the operator.
 
 It prints one line per match, as `one-way-door: <path>`, and exits with 1. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
