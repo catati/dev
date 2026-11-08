@@ -19,6 +19,54 @@ Each rule names its check. A rule marked `catati-dev check` fails `make verify` 
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
 - [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, PR sections and evidence.
 
+## Run `catati-dev check` in `make verify`
+
+`catati-dev check` checks the rules marked `catati-dev check` in `conventions/`.
+It checks the whole git repo that holds the current directory, so you can run it from any subdirectory.
+It compares the repo with the `templates/` folder of the installed package, so it needs no network.
+It prints one line per finding, as `<check>: <path>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
+If it cannot run, for example outside a git repo or on a file it cannot read, it prints one line on stderr and exits with 2.
+
+| Check | Fails when |
+| --- | --- |
+| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` or `.github/pull_request_template.md` is missing or differs by a byte from `templates/`. |
+| `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint` or `help` target. |
+| `ci-workflow` | `.github/workflows/ci.yml` is missing. |
+| `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
+
+To install the package, add it as a dev dependency pinned to a commit of this repo:
+
+```sh
+pnpm add -D github:catati/dev#<sha>
+npm install -D github:catati/dev#<sha>
+```
+
+Then call it from the `verify` target:
+
+```make
+verify: lint test
+	npx catati-dev check
+```
+
+Other repos can install the package only when `catati/dev` is public (#15).
+
+To accept a finding for a time, add this line to the file that has the finding:
+
+```text
+# catati-dev-allow(<check>): <reason>; expires YYYY-MM-DD
+```
+
+The line turns off that check for every finding in the file that holds it, until the end of the date.
+It covers the whole file, not one line, because some findings have no line of their own. A missing `Makefile` target is an example.
+
+A file that cannot hold a comment, such as a template or a missing file, takes its line in `.catati-dev-allow` at the repo root, one line per check.
+A line in `.catati-dev-allow` turns off its check for the whole repo.
+
+An expired or malformed allow line is a finding with the check `allow`.
+A date that does not exist, such as `2026-02-31`, makes the line malformed.
+
+To test the package, run `npm test`.
+
 ## Change process
 
 1. Change the files here in a PR.
