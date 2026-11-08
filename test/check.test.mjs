@@ -14,6 +14,7 @@ function cleanRepo() {
 	return {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
 		'.github/pull_request_template.md': template('pull_request_template.md'),
+		'.github/workflows/pr-format.yml': template('pr-format.yml'),
 		'.github/workflows/ci.yml': 'on: push\n',
 		Makefile: cleanMakefile,
 		'.env.example': 'KEY=\n',
@@ -60,6 +61,14 @@ test('templates-equal flags a changed and a missing template', (t) => {
 			'templates-equal: .github/ISSUE_TEMPLATE/issue.yml: file is missing',
 			'templates-equal: .github/pull_request_template.md: differs from templates/pull_request_template.md',
 		],
+	});
+});
+
+test('templates-equal flags a pr-format workflow that differs from the template', (t) => {
+	const files = { ...cleanRepo(), '.github/workflows/pr-format.yml': template('pr-format.yml').toString().replace('pr-format:', 'tooling/pr-format:') };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: ['templates-equal: .github/workflows/pr-format.yml: differs from templates/pr-format.yml'],
 	});
 });
 
