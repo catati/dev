@@ -128,6 +128,8 @@ A link that stays in the repo is skipped too. Git commits the link, not the file
 After the files, it prints the findings of `catati-dev check`, such as a missing `e2e` target. Those are the changes `setup` does not make.
 With `--dry-run`, it prints the same lines and writes nothing. The findings then show what would be left after a real run.
 It exits with 0, also when it prints findings. If it cannot run, for example outside a git repo, it prints one line on stderr and exits with 2.
+If it skipped a file, its last line goes to stderr, as `catati-dev: setup skipped <n> file(s); the standard is not fully applied`, and it still exits with 0.
+A caller such as a skill reads stderr to learn that the repo needs a person to look at the skipped files.
 
 `setup` does not touch the `Makefile`, the CI workflows, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
 
