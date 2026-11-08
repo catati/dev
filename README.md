@@ -50,7 +50,7 @@ Cloudflare is the only serverless provider. Firebase is being removed, so this e
 | `branding` | `npm ci`; Python scripts through `uv run` | None. `package.json` pins `wrangler`; `pyproject.toml` declares `fonttools` and `brotli` (catati/branding#5). | |
 | `knowledge` | `make install` | None. `make install` runs `gitleaks-install` (catati/knowledge#13). | |
 
-Until every row reads "None", use `setup.sh` from commit `9b6a505` in the form: it still installs these tools globally. Paste the current [setup.sh](setup.sh) only after that, or a repo with a gap loses those tools in the cloud. Set a row's gap to "None" when that repo's fix merges.
+Paste the current [setup.sh](setup.sh) into the environment form after each merge that changes it. A row with an open gap means that repo's sessions lack the tool until the repo's fix reaches `main`. Set a row's gap to "None" when that fix reaches `main`.
 
 Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `ads`, `products`, `catati-products` (no Git remote).
 

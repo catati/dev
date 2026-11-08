@@ -7,27 +7,19 @@
 set -euo pipefail
 
 # --- Node ----------------------------------------------------------------------
-# All Node repos need Node 24; agents workspace packages need >= 24.15. The image default is 22.
-NODE_MAJOR=24
+# All Node repos need Node 24; agents workspace packages need >= 24.15.
+# The session PATH puts the image's /opt/node22/bin before /usr/local/bin, and setup cannot change
+# that PATH. So n installs Node 24 into /opt/node22, the first prefix the session finds.
+NODE_PREFIX=/opt/node22
+export PATH="$NODE_PREFIX/bin:$PATH"
 
-# shortcut: installs through nvm when the image has it, else through n.
-# Confirm `node -v` prints v24.15 or later in the first session; pin the image's own method if not.
-if [ -s "${NVM_DIR:-/root/.nvm}/nvm.sh" ]; then
-  set +u # nvm.sh reads unset variables
-  # shellcheck disable=SC1091
-  . "${NVM_DIR:-/root/.nvm}/nvm.sh"
-  nvm install "$NODE_MAJOR"
-  nvm alias default "$NODE_MAJOR"
-  set -u
-else
-  npm install -g n
-  n "$NODE_MAJOR"
-fi
+npm install -g n
+N_PREFIX="$NODE_PREFIX" n 24
 hash -r
 # shellcheck disable=SC2016 # ${...} is a JavaScript template literal, not shell expansion
 node -e 'const [a, b] = process.versions.node.split(".").map(Number);
-  if (a < 24 || (a === 24 && b < 15)) console.warn(`WARNING: node ${process.version} < 24.15; agents needs 24.15+`);
-  else console.log(`node ${process.version}`);'
+  if (a < 24 || (a === 24 && b < 15)) { console.error(`node ${process.version} < 24.15`); process.exit(1); }
+  console.log(`node ${process.version} at ${process.execPath}`);'
 
 # Each repo's packageManager field picks its pnpm version; corepack fetches it on first use.
 corepack enable
