@@ -32,7 +32,7 @@ A PR that is not open still gets a verifier, but this run posts no comment. A ga
 
 Spawn one subagent with the `Agent` tool: `subagent_type: "general-purpose"`, the `model` from step 2, and the brief below as the prompt, every `<placeholder>` filled. Wait for its report. Do not run a second verifier to overrule the first.
 
-A subagent has no `Agent` tool, and a headless `claude -p` is refused. There, start a child session with `mcp__claude-code-remote__create_session`, passing the same `model` and the brief as `prompt`. Read its report with `list_events` (kinds `assistant` and `result`) once `get_session` shows it idle, then archive it with `archive_session`.
+Run this skill in a session that has the `Agent` tool and the repo attached. A subagent has no `Agent` tool. Auto mode refuses a headless `claude -p`. A child session from `create_session` has no GitHub access to the repo, and auto mode refuses to run code it clones. Without the `Agent` tool, stop and report that the caller must spawn the verifier.
 
 ````text
 You are an adversarial verifier for <PR URL>. Your job is to find what is wrong with it, not to approve it.
@@ -48,7 +48,7 @@ Rules:
 
 Do each step and keep its command and output:
 
-1. Check out. In a new scratch directory, clone https://github.com/<owner>/<repo>, run `git fetch origin pull/<n>/head <base.ref>`, then `git worktree add --detach head <sha>` and `git worktree add --detach base origin/<base.ref>`. Confirm `git -C head rev-parse HEAD` prints <sha>. If not, stop with FAIL.
+1. Check out. In the session's own checkout of <owner>/<repo>, run `git fetch origin pull/<n>/head <base.ref>`, then `git worktree add --detach <scratch>/head <sha>` and `git worktree add --detach <scratch>/base origin/<base.ref>`, with <scratch> a new directory. Run every later step in those two worktrees, called `head` and `base` below. Confirm `git -C head rev-parse HEAD` prints <sha>. If not, stop with FAIL.
 2. Scope. `git -C head diff --stat origin/<base.ref>...<sha>`. Each changed file must serve the issue. Name each file outside its What to build.
 3. Acceptance criteria. Reproduce each one yourself, with your own commands or scratch inputs. Do not trust the PR's Evidence section. Mark each criterion proven, failed or unproven.
 4. Tests. Install the repo as its README or Makefile says and run its tests in `head` (`npm test`, `make verify` or the repo's equivalent). Paste the summary line.
