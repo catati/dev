@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-import { check } from '../lib/check.mjs';
-import { checkMerge } from '../lib/check-merge.mjs';
-import { checkPr } from '../lib/check-pr.mjs';
-import { sessionStart } from '../lib/session-start.mjs';
-import { setup } from '../lib/setup.mjs';
+const commands = {
+	check: async () => (await import('../lib/check.mjs')).check,
+	'check-merge': async () => (await import('../lib/check-merge.mjs')).checkMerge,
+	'check-pr': async () => (await import('../lib/check-pr.mjs')).checkPr,
+	'session-start': async () => (await import('../lib/session-start.mjs')).sessionStart,
+	setup: async () => (await import('../lib/setup.mjs')).setup,
+};
 
-const commands = { check, 'check-merge': checkMerge, 'check-pr': checkPr, 'session-start': sessionStart, setup };
-
-const command = commands[process.argv[2]];
-if (!command) {
+const load = commands[process.argv[2]];
+if (!load) {
 	console.error(`usage: catati-dev <${Object.keys(commands).join('|')}>`);
 	process.exit(2);
 }
+const command = await load();
 process.exitCode = command(process.cwd(), process.argv.slice(3));

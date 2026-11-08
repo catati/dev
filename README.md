@@ -165,22 +165,26 @@ A rename counts as a delete and an add, so a file that moves into or out of a do
 
 | Path | Why it is a one-way door |
 | --- | --- |
-| `.github/workflows/**`, `.github/rulesets/**` | CI, required checks and branch protection. |
+| `.github/**` | CI, required checks, branch protection, CODEOWNERS, composite actions and Dependabot. |
 | `.claude/settings.json` | The permission prompts and sandbox rules of every session in the repo. |
 | `.githooks/**` | Git hooks run on every developer machine and can skip the local guards. |
 | `env/setup.sh` | The setup script of every cloud session. |
-| `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `firebase.json` | Deploy config. |
-| `firestore.rules`, `storage.rules` | The access rules of live data. |
+| `**/package.json` | Deploy and release scripts live in `scripts`. In catati/dev, `bin` also names the gate's entry point. |
+| `**/Makefile`, `**/makefile`, `**/GNUmakefile`, `**/*.mk` | Deploy targets. A variable or an `include` can change one without touching its lines, so any change counts. |
+| `**/Dockerfile`, `**/docker-compose*` | What the deployed containers run. |
+| `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. |
+| `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. |
 | `**/migrations/**` | Data migrations. |
-| `**/Makefile` | Only when a line of a `deploy-*` target is added, removed or changed. A change to other targets passes. |
-| `templates/pr-format.yml`, `templates/claude-settings.json`, `templates/githooks/**` | `catati-dev setup` copies these into the workflows, settings and Git hooks of every repo. |
-| `lib/check-merge.mjs` | The gate itself. It must not be able to pass a change to its own code. |
+| `templates/pr-format.yml`, `templates/claude-settings.json`, `templates/githooks/**`, `templates/CODEOWNERS`, `templates/pull_request_template.md` | `catati-dev setup` copies these into the workflows, settings, Git hooks, code owners and PR template of every repo. |
+| `bin/catati-dev.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test fails when `check-merge` loads a module outside this list. |
 
 It prints one line per match, as `one-way-door: <path>`, and exits with 1. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
 
 The rule also names "anything touching production". No path list can prove that a change leaves production alone, so that part stays a judgment for the coordinator. Exit 0 means only that no listed path changed.
-A `Makefile` variable that a `deploy-*` target reads is an example of a change the list does not see.
+A deploy script that a `Makefile` target calls, such as `scripts/deploy.sh`, is an example of a change the list does not see.
+
+Run the gate from the base branch's copy of `catati-dev`, never from the PR head. The head's copy is the code under review, so a PR could edit it to pass itself.
 
 ## Use the `catati` plugin
 

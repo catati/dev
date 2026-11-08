@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati-dev.mjs', import.meta.url).pathname;
-
-const makefile = (deployRecipe, testRecipe = '\tnode --test') =>
-	['.PHONY: test deploy-prod', 'test:', testRecipe, '', 'deploy-prod: build', deployRecipe, '', 'build:', '\t@true', ''].join('\n');
+const packageRoot = new URL('../', import.meta.url).pathname;
+const cli = join(packageRoot, 'bin/catati-dev.mjs');
 
 function repo(t) {
 	const parent = mkdtempSync(join(tmpdir(), 'catati-dev-'));
@@ -45,29 +43,50 @@ const clean = { status: 0, lines: ['check-merge: no one-way-door path'] };
 
 test('a diff that touches no door path passes', (t) => {
 	const { commit, run } = repo(t);
-	const base = commit({ 'README.md': 'a\n', 'lib/x.mjs': '1\n', Makefile: makefile('\t./deploy.sh') });
-	const head = commit({ 'README.md': 'b\n', 'lib/x.mjs': '2\n', 'templates/issue.yml': 'x\n', 'env/.env.example': 'A=\n', '.github/CODEOWNERS': '* @x\n' });
+	const base = commit({ 'README.md': 'a\n', 'lib/x.mjs': '1\n' });
+	const head = commit({ 'README.md': 'b\n', 'lib/x.mjs': '2\n', 'lib/check.mjs': 'x\n', 'templates/issue.yml': 'x\n', 'env/.env.example': 'A=\n', 'docs/docker.md': 'x\n' });
 	assert.deepEqual(run([base, head]), clean);
 });
 
 const doorExamples = [
 	'.github/workflows/ci.yml',
 	'.github/rulesets/main.json',
+	'.github/CODEOWNERS',
+	'.github/actions/setup/action.yml',
+	'.github/dependabot.yml',
 	'.claude/settings.json',
 	'.githooks/pre-push',
 	'env/setup.sh',
+	'package.json',
+	'web/package.json',
+	'Makefile',
+	'web/makefile',
+	'GNUmakefile',
+	'make/deploy.mk',
+	'Dockerfile',
+	'mcps/shopify/Dockerfile',
+	'docker-compose.yml',
+	'deploy/docker-compose.prod.yaml',
 	'wrangler.toml',
 	'web/wrangler.json',
 	'apps/api/wrangler.jsonc',
+	'shopify.app.toml',
+	'apps/admin/shopify.app.prod.toml',
 	'firebase.json',
+	'.firebaserc',
 	'firestore.rules',
+	'firestore.indexes.json',
 	'storage.rules',
 	'migrations/0001_init.sql',
 	'functions/db/migrations/0002.sql',
 	'templates/pr-format.yml',
 	'templates/claude-settings.json',
 	'templates/githooks/pre-push',
+	'templates/CODEOWNERS',
+	'templates/pull_request_template.md',
+	'bin/catati-dev.mjs',
 	'lib/check-merge.mjs',
+	'lib/repo.mjs',
 ];
 
 for (const path of doorExamples) {
@@ -86,22 +105,28 @@ test('nested look-alikes of root-only door paths are not doors', (t) => {
 	assert.deepEqual(run([base, head]), clean);
 });
 
-test('a Makefile change under a deploy- target is a one-way door, one elsewhere is not', (t) => {
-	const { commit, run } = repo(t);
-	const base = commit({ Makefile: makefile('\t./deploy.sh prod') });
-	const testOnly = commit({ Makefile: makefile('\t./deploy.sh prod', '\tnode --test --watch') });
-	assert.deepEqual(run([base, testOnly]), clean);
-	const deploy = commit({ Makefile: makefile('\t./deploy.sh prod --force', '\tnode --test --watch') });
-	assert.deepEqual(run([testOnly, deploy]), { status: 1, lines: ['one-way-door: Makefile'] });
-});
+function gateClosure() {
+	const seen = new Set();
+	const visit = (file, pattern) => {
+		const path = relative(packageRoot, file);
+		if (seen.has(path)) return;
+		seen.add(path);
+		for (const [, spec] of readFileSync(file, 'utf8').matchAll(pattern)) if (spec.startsWith('.')) visit(join(dirname(file), spec), staticAndDynamic);
+	};
+	const staticOnly = /^\s*import\b[^'"]*['"]([^'"]+)['"]/gm;
+	const staticAndDynamic = /\bimport\b[^'"]*?['"]([^'"]+)['"]/g;
+	visit(cli, staticOnly);
+	visit(join(packageRoot, 'lib/check-merge.mjs'), staticAndDynamic);
+	return [...seen, 'package.json'].sort();
+}
 
-test('adding or removing a deploy- target in a nested Makefile is a one-way door', (t) => {
+test('every file the check-merge command loads, and package.json, is a one-way door', (t) => {
+	const closure = gateClosure();
+	assert.deepEqual(closure, ['bin/catati-dev.mjs', 'lib/check-merge.mjs', 'lib/repo.mjs', 'package.json']);
 	const { commit, run } = repo(t);
-	const base = commit({ 'web/Makefile': 'test:\n\t@true\n' });
-	const added = commit({ 'web/Makefile': 'test:\n\t@true\n\ndeploy-dev:\n\twrangler deploy\n' });
-	assert.deepEqual(run([base, added]), { status: 1, lines: ['one-way-door: web/Makefile'] });
-	const removed = commit({}, { remove: ['web/Makefile'] });
-	assert.deepEqual(run([added, removed]), { status: 1, lines: ['one-way-door: web/Makefile'] });
+	const base = commit({ 'README.md': 'a\n' });
+	const head = commit(Object.fromEntries(closure.map((path) => [path, 'x\n'])));
+	assert.deepEqual(run([base, head]), { status: 1, lines: closure.map((path) => `one-way-door: ${path}`) });
 });
 
 test('a rename into or out of a door path is a one-way door', (t) => {
