@@ -67,6 +67,40 @@ A date that does not exist, such as `2026-02-31`, makes the line malformed.
 
 To test the package, run `npm test`.
 
+## Run `catati-dev session-start` at session start
+
+`catati-dev session-start` sets up a session in the git repo that holds the current directory:
+
+1. If the repo has a `.githooks` folder and `core.hooksPath` is unset, it sets `git config core.hooksPath .githooks`. If `core.hooksPath` already names another folder, such as `.husky`, it keeps that value and prints a warning.
+2. If `~/.claude/rules/pstack-models.md` is missing, it copies `templates/pstack-models.md` there. It never replaces a rule you already have.
+3. It checks that `node` is 24.15 or later. If `package.json` has `packageManager: pnpm@<version>`, it checks that `corepack pnpm --version` prints that version.
+   The first run in a repo can download that pnpm version through corepack, about 1.5 s on a cold cache. The download fills the cache the repo's install step needs.
+   Each check stops after 3 s, so a session with no network starts with a `timed out` warning instead of a long wait.
+
+Each step reads the current state first, so a second run changes nothing.
+It prints one line on stdout per toolchain problem, as `catati-dev: <problem>`, and still exits with 0.
+Claude Code adds a SessionStart hook's stdout to the session when the hook exits with 0, so the agent sees the warning and the session starts normally.
+Outside a git repo, it prints one line on stderr and exits with 2.
+
+To run it in every session of a repo, add this entry to the repo's `.claude/settings.json`:
+
+```json
+{
+	"hooks": {
+		"SessionStart": [
+			{
+				"hooks": [{ "type": "command", "command": "cd \"$CLAUDE_PROJECT_DIR\" && node_modules/.bin/catati-dev session-start" }]
+			}
+		]
+	}
+}
+```
+
+The entry calls the installed binary directly. `npx --no-install catati-dev` asks the npm registry for `catati-dev` when the package is not installed.
+A fresh clone has no `node_modules`, so the hook prints `not found` until the repo installs. To set up a fresh clone, also run `node_modules/.bin/catati-dev session-start` as the last step of `make install`.
+
+A session whose primary directory is not a repo runs no repo's SessionStart hook. For those sessions, [env/setup.sh](env/setup.sh) writes the same rule before Claude starts, with the same "only when missing" test. `npm test` fails when the copy in `env/setup.sh` differs from `templates/pstack-models.md`.
+
 ## Change process
 
 1. Change the files here in a PR.
@@ -75,7 +109,7 @@ To test the package, run `npm test`.
 
 ## Checks for a new session
 
-Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `corepack --version` and `uv --version`. Then run the install step of the repo in the session.
+Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `corepack --version` and `uv --version`. Check that `~/.claude/rules/pstack-models.md` exists. Then run the install step of the repo in the session.
 
 ## Repo contract
 
@@ -89,6 +123,7 @@ Each repo declares every other tool it needs, so its own install step sets it up
 - Playwright browsers: `playwright install chromium` in the install step.
 
 Do not add a repo tool to [env/setup.sh](env/setup.sh). Fix the repo instead.
+The one non-runtime step in `env/setup.sh` is the pstack model rule. The rule belongs to the user, not to a repo, and the setup script is the only step that runs in every session.
 
 ## GitHub access
 
