@@ -111,3 +111,17 @@ test('a run from a subdirectory checks the whole repo', (t) => {
 		lines: ['ci-workflow: .github/workflows/ci.yml: file is missing', 'env-example: web/example.env: env template is not named .env.example'],
 	});
 });
+
+test('a run outside a git repository prints one line and exits with 2', (t) => {
+	assert.deepEqual(runCheck(cleanRepo(), t, { git: false }), {
+		status: 2,
+		lines: [],
+		errors: ['catati-dev: not inside a git repository'],
+	});
+});
+
+test('a file it cannot read prints one line naming the path and exits with 2', (t) => {
+	const { status, lines, errors } = runCheck({ ...cleanRepo(), Makefile: new Link('Makefile') }, t);
+	assert.deepEqual({ status, lines, errors: errors?.length }, { status: 2, lines: [], errors: 1 });
+	assert.match(errors[0], /^catati-dev: cannot read Makefile: ELOOP$/);
+});
