@@ -13,7 +13,7 @@ Each field of the environment form has one source here. Change the file, not the
 ## Conventions
 
 `conventions/` holds the rules every Catati repo follows. `templates/` holds the files that `catati-dev setup` and `catati-dev session-start` write.
-Each rule names its check. A rule marked `catati-dev check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
+Each rule names its check. A rule marked `catati-dev check` fails `make verify` when it breaks. A rule marked `catati-dev check-pr` fails the `pr-format` check on the PR. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
@@ -29,7 +29,7 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 
 | Check | Fails when |
 | --- | --- |
-| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` or `.github/pull_request_template.md` is missing or differs by a byte from `templates/`. |
+| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml`, `.github/pull_request_template.md` or `.github/workflows/pr-format.yml` is missing or differs by a byte from `templates/`. |
 | `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint` or `help` target. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
 | `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
@@ -110,6 +110,7 @@ Run it again at any time to bring the repo up to date. A run on a repo that is a
 | --- | --- |
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
 | `.github/pull_request_template.md` | Copies `templates/pull_request_template.md`. |
+| `.github/workflows/pr-format.yml` | Copies `templates/pr-format.yml`, the workflow that runs `catati-dev check-pr` on each PR. |
 | `.github/CODEOWNERS` | Adds each line of `templates/CODEOWNERS` that the file lacks, at the end and in template order. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. |
@@ -131,7 +132,30 @@ It exits with 0, also when it prints findings. If it cannot run, for example out
 If it skipped a file, its last line goes to stderr, as `catati-dev: setup skipped <n> file(s); the standard is not fully applied`, and it still exits with 0.
 A caller such as a skill reads stderr to learn that the repo needs a person to look at the skipped files.
 
-`setup` does not touch the `Makefile`, the CI workflows, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
+`setup` does not touch the `Makefile`, `ci.yml`, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
+
+## Run `catati-dev check-pr` in the `pr-format` workflow
+
+`catati-dev check-pr` checks the title and body of a PR against the rules marked `catati-dev check-pr` in [conventions/issues-and-prs.md](conventions/issues-and-prs.md).
+It reads the title from `PR_TITLE`, the body from `PR_BODY` and the author from `PR_ACTOR`.
+It takes the section order from `templates/pull_request_template.md` in the installed package, the same file that `templates-equal` keeps in the repo.
+
+| Part | Fails when |
+| --- | --- |
+| title | The title does not read `<area>: <outcome>`, such as `admin: Warn before an admin change overbooks a room`. |
+| body | A heading or the `> [!NOTE]` card of the template is missing or out of order. |
+| body | The body has no `Closes #<issue number>`. |
+| body | Merge Danger has no ``**Door:** `two-way` `` or ``**Door:** `one-way` ``. |
+
+It prints one line per finding, as `<part>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
+In GitHub Actions, each line starts with `::error::`, so the finding shows on the PR.
+A PR whose author ends in `[bot]`, such as `dependabot[bot]`, is skipped with one line and exit 0.
+If `PR_TITLE` or `PR_BODY` is unset, it prints one line on stderr and exits with 2.
+
+`setup` copies [templates/pr-format.yml](templates/pr-format.yml) to `.github/workflows/pr-format.yml`. The file is the same in every repo, and its job is named `pr-format`.
+The job does not install the repo. It checks out only `package.json` and `.node-version`, reads the `catati-dev` pin from `devDependencies`, and installs that one package into a temporary folder with `npm install`.
+The same steps work for pnpm and npm repos, because both write the pin to `package.json` as `github:catati/dev#<sha>`. `catati-dev` has no dependencies, so the install takes about 2 s.
+The job fails when the pin is not `github:catati/dev#<full commit SHA>`. A branch or a short SHA could change under the repo.
 
 ## Use the `catati` plugin
 

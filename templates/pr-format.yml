@@ -1,0 +1,41 @@
+name: PR format
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            package.json
+            .node-version
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install the pinned catati-dev
+        run: |
+          pin=$(node -p "require('./package.json').devDependencies?.['catati-dev'] ?? ''")
+          if [[ ! "$pin" =~ ^github:catati/dev#[0-9a-f]{40}$ ]]; then
+            echo "::error file=package.json::devDependencies.catati-dev must be github:catati/dev#<full commit SHA>"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/catati-dev"
+          cd "$RUNNER_TEMP/catati-dev"
+          npm install --no-save --no-package-lock --no-audit --no-fund --ignore-scripts "catati-dev@$pin"
+      - name: Check the PR title and body
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_ACTOR: ${{ github.event.pull_request.user.login }}
+        run: '"$RUNNER_TEMP/catati-dev/node_modules/.bin/catati-dev" check-pr'

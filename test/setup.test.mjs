@@ -11,6 +11,7 @@ const template = (name) => readFileSync(new URL(`../templates/${name}`, import.m
 const managed = {
 	'.github/ISSUE_TEMPLATE/issue.yml': 'issue.yml',
 	'.github/pull_request_template.md': 'pull_request_template.md',
+	'.github/workflows/pr-format.yml': 'pr-format.yml',
 	'.github/CODEOWNERS': 'CODEOWNERS',
 	'.githooks/pre-commit': 'githooks/pre-commit',
 	'.githooks/pre-push': 'githooks/pre-push',
@@ -194,7 +195,7 @@ test('a managed path that is a symlink is left as is', (t) => {
 
 test('a managed directory that is a symlink out of the repo is skipped, and nothing outside changes', async (t) => {
 	const cases = {
-		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md', '.github/CODEOWNERS'],
+		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md', '.github/workflows/pr-format.yml', '.github/CODEOWNERS'],
 		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
 		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
 		'.claude': ['.claude/settings.json'],
