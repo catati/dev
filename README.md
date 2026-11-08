@@ -164,6 +164,25 @@ The job does not install the repo. It checks out only `package.json` and `.node-
 The same steps work for pnpm and npm repos, because both write the pin to `package.json` as `github:catati/dev#<sha>`. `catati-dev` has no dependencies, so the install takes about 2 s.
 The job fails when the pin is not `github:catati/dev#<full commit SHA>`. A branch or a short SHA could change under the repo.
 
+## Run `catati-dev check-verified` in the `verified` workflow
+
+A PR in catati/dev cannot merge until an independent verifier has passed its current head. The required `verified` check enforces this rule.
+The check passes only when a PR comment has `Verified at <full head SHA>` as its exact first line, and the comment's `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR`.
+A push changes the head, so the check fails again until a new comment names the new head. The verdict, its evidence and any findings go on the lines after the first.
+
+`catati-dev check-verified [--head <full head SHA>] [<comments JSON file>]` applies the rule.
+It reads the head SHA from `--head` or `HEAD_SHA`, and the comments from the file or, with no file or `-`, from stdin.
+The comments are a JSON array of objects with a string `body` and `author_association`, as the REST API lists them.
+It prints one line and exits with 0 when the PR is verified, with 1 when it is not, and with 2 on bad input, such as a short head SHA or comments that are not that array.
+In GitHub Actions, a failure line starts with `::error::`.
+
+[.github/workflows/verified.yml](.github/workflows/verified.yml) runs the check in two jobs:
+
+- On `pull_request` (`opened`, `synchronize`, `reopened`), the `verified` job lists the PR's comments and runs `check-verified` on the PR head.
+- On `issue_comment` (`created`, `edited`, `deleted`) for a comment on a PR that starts with `Verified at `, or an edit that removes such a line, the `rerun` job re-runs the latest `verified` run for the PR head. A workflow on `issue_comment` runs on the default branch, so its own check would not attach to the PR head. Deleting a verdict re-runs the check too, so a deleted verdict leaves no stale green.
+
+A PR that edits `verified.yml` or `lib/check-verified.mjs` changes the check that judges it, because `pull_request` runs the PR's own workflow. `check-merge` counts `verified.yml` as a one-way door under `.github/**`, but not `lib/check-verified.mjs`, so a reviewer checks any change to the script.
+
 ## Run `catati-dev check-merge` before a merge without the operator
 
 `catati-dev check-merge <base> <head>` checks rule 3 of the merge-gate trial in #8: the diff touches no one-way-door path.

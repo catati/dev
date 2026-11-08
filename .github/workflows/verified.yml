@@ -1,0 +1,70 @@
+name: Verified
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions: {}
+
+jobs:
+  verified:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            bin
+            lib
+            templates/node-version
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: templates/node-version
+          package-manager-cache: false
+      - name: Check for a Verified at comment that names the head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments?per_page=100" \
+            --jq '.[] | {body, author_association}' | jq -s . > "$RUNNER_TEMP/comments.json"
+          node bin/catati-dev.mjs check-verified "$RUNNER_TEMP/comments.json"
+
+  rerun:
+    if: >-
+      github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+      (startsWith(github.event.comment.body, 'Verified at ') || startsWith(github.event.changes.body.from, 'Verified at '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: verified-rerun-${{ github.event.issue.number }}
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Re-run the verified check on the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          head_sha=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          run_id=$(gh api "repos/$REPO/actions/workflows/verified.yml/runs?event=pull_request&head_sha=$head_sha&per_page=1" \
+            --jq '.workflow_runs[0].id // empty')
+          if [ -z "$run_id" ]; then
+            echo "::notice::No verified run exists for $head_sha; the next push runs the check"
+            exit 0
+          fi
+          gh run watch "$run_id" --repo "$REPO" > /dev/null || true
+          gh api -X POST "repos/$REPO/actions/runs/$run_id/rerun"
+          echo "Re-ran https://github.com/$REPO/actions/runs/$run_id for $head_sha"
