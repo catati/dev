@@ -1,0 +1,49 @@
+name: Issue
+description: One independently reviewable change, written by hand
+title: ""
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Title the issue `<area>: <outcome>`, with the outcome as a plain imperative action a person notices.
+        Open with the card a person reads at a glance; write the sections below it for the agent that builds it.
+
+  - type: textarea
+    id: card
+    attributes:
+      label: Card
+      description: One plain line each that stays true while the work moves; its label says where it stands.
+      value: |
+        > [!NOTE]
+        > **What:**
+        > **Why:**
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-to-build
+    attributes:
+      label: What to build
+      description: The end-to-end behaviour this change makes work, from the user's perspective.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable conditions that must be true before this issue is complete.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocked-by
+    attributes:
+      label: Blocked by
+      description: Each open blocker as `#N`, also added as a native GitHub dependency, or `None (can start immediately)`.
+      value: "None (can start immediately)"
+    validations:
+      required: true

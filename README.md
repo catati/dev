@@ -10,10 +10,19 @@ Each field of the environment form has one source here. Change the file, not the
 | Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank secrets in the form. Dev values only: every user of the environment can read them. |
 | Setup script | Paste [env/setup.sh](env/setup.sh) |
 
+## Conventions
+
+`conventions/` holds the rules every Catati repo follows. `templates/` holds the files every repo carries unchanged.
+Each rule names its check. A rule marked `catati-dev check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
+
+- [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
+- [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
+- [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, PR sections and evidence.
+
 ## Change process
 
 1. Change the files here in a PR.
-2. After merge, paste each changed file into its field on claude.ai/code. The form has no API, so this step is manual. Exception: while the gap table below has open rows, do not paste [env/setup.sh](env/setup.sh).
+2. After merge, paste each changed file into its field on claude.ai/code. The form has no API, so this step is manual.
 3. Start a new cloud session and run the checks below.
 
 ## Checks for a new session
