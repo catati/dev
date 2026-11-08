@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { check } from '../lib/check.mjs';
+import { sessionStart } from '../lib/session-start.mjs';
 
-const commands = { check };
+const commands = { check, 'session-start': sessionStart };
 
 const command = commands[process.argv[2]];
 if (!command) {
