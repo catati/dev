@@ -121,6 +121,8 @@ The settings merge keeps every key the repo already has, and adds new list entri
 If a merge cannot keep the file's own bytes, it prints `skipped <path>: <reason>` and leaves the file as is.
 An example is a file that a JSON rewrite would reformat, or a `permissions.ask` that is not a list.
 It also skips a managed path that is not a regular file, such as a symlink.
+It skips a managed path whose parent directory, such as `.github`, is a symlink. If the link leads out of the repo, the line reads `skipped <path>: resolves outside the repo`.
+A link that stays in the repo is skipped too, because GitHub and git read these files at their own paths, not at the link's target.
 
 After the files, it prints the findings of `catati-dev check`, such as a missing `e2e` target. Those are the changes `setup` does not make.
 With `--dry-run`, it prints the same lines and writes nothing. The findings then show what would be left after a real run.
