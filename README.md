@@ -21,6 +21,7 @@ Each rule names its check. A rule marked `catati check` fails `make verify` when
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
 - [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, `Closes #N` and the verify gates.
 - [conventions/workflow.md](conventions/workflow.md) covers the merge rule, doors and sessions.
+- [conventions/ci.md](conventions/ci.md) covers the `changes` job that runs only the CI jobs a diff affects, and how to gate them.
 - [conventions/testing.md](conventions/testing.md) defines the unit, integration and e2e layers, and what agents prove on dev and leave to production.
 
 ## Run `catati check` in `make verify`
