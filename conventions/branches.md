@@ -23,9 +23,9 @@
 
 | Rule | Check |
 | --- | --- |
-| `catati-dev session-start` sets the git hooks path. | judgment |
-| `catati-dev session-start` copies `templates/pstack-models.md` to `~/.claude/rules/`. | judgment |
-| `catati-dev session-start` checks the toolchain. | judgment |
+| `catati session-start` sets the git hooks path. | judgment |
+| `catati session-start` copies `templates/pstack-models.md` to `~/.claude/rules/`. | judgment |
+| `catati session-start` checks the toolchain. | judgment |
 
 ## Environments
 

@@ -14,7 +14,7 @@ Title formats and status label names are in [naming.md](naming.md).
 
 | Rule | Check |
 | --- | --- |
-| `.github/ISSUE_TEMPLATE/issue.yml` equals `templates/issue.yml`. | `catati-dev check` |
+| `.github/ISSUE_TEMPLATE/issue.yml` equals `templates/issue.yml`. | `catati check` |
 | An issue fills the form fields Card, What to build, Acceptance criteria and Blocked by. | judgment |
 | An open issue has exactly one status label. | judgment |
 | `todo` means planned and ready. `doing` means a builder has it. `review` means its PR is open. `blocked` means it waits on a person. | judgment |
@@ -24,14 +24,14 @@ Title formats and status label names are in [naming.md](naming.md).
 
 | Rule | Check |
 | --- | --- |
-| `.github/pull_request_template.md` equals `templates/pull_request_template.md`. | `catati-dev check` |
-| `.github/workflows/pr-format.yml` equals `templates/pr-format.yml`. | `catati-dev check` |
-| A PR title is `<area>: <outcome>`. | `catati-dev check-pr` |
-| A PR body keeps the template headings and the Note card in order: `## Why`, the Note card, What changes and Risk, then Summary, Evidence, Guards and Merge Danger. | `catati-dev check-pr` |
-| A PR body has `Closes #N`. | `catati-dev check-pr` |
+| `.github/pull_request_template.md` equals `templates/pull_request_template.md`. | `catati check` |
+| `.github/workflows/pr-format.yml` equals `templates/pr-format.yml`. | `catati check` |
+| A PR title is `<area>: <outcome>`. | `catati check-pr` |
+| A PR body keeps the template headings and the Note card in order: `## Why`, the Note card, What changes and Risk, then Summary, Evidence, Guards and Merge Danger. | `catati check-pr` |
+| A PR body has `Closes #N`. | `catati check-pr` |
 | `Closes #N` sits in the Note card, and Summary, Evidence, Guards and Merge Danger sit inside Details. | judgment |
 | Guards has one line per accepted review finding, `- <finding> → <rung>: <artefact or #N>` or `- <finding> → one-off: <reason>`, or `None`. | judgment |
-| Merge Danger sets Door to `two-way` or `one-way`. | `catati-dev check-pr` |
+| Merge Danger sets Door to `two-way` or `one-way`. | `catati check-pr` |
 | Door is `two-way` when a revert restores the previous behaviour, and `one-way` otherwise. | judgment |
 | Merge Danger names the smallest affected surface in Blast Radius. | judgment |
 

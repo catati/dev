@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati-dev.mjs', import.meta.url).pathname;
+const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = readFileSync(new URL('../templates/pull_request_template.md', import.meta.url), 'utf8');
 
 const validTitle = 'cli: Every repo checks its PR title and body the same way';
@@ -84,7 +84,7 @@ test('a run without PR_TITLE or PR_BODY, or with an argument, prints one line an
 	assert.deepEqual(checkPr({ PR_ACTOR: 'catati-ops' }), {
 		status: 2,
 		lines: [],
-		errors: ['catati-dev: check-pr needs PR_TITLE and PR_BODY in the environment'],
+		errors: ['catati: check-pr needs PR_TITLE and PR_BODY in the environment'],
 	});
-	assert.deepEqual(checkPr(pr(), ['--fix']), { status: 2, lines: [], errors: ['catati-dev: check-pr takes no arguments, not --fix'] });
+	assert.deepEqual(checkPr(pr(), ['--fix']), { status: 2, lines: [], errors: ['catati: check-pr takes no arguments, not --fix'] });
 });

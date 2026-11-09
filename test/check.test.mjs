@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati-dev.mjs', import.meta.url).pathname;
+const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
 
 const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true', 'lint help:', '\t@true', ''].join('\n');
@@ -25,7 +25,7 @@ function cleanRepo() {
 }
 
 function runCheck(files, t, { git = true, from = '' } = {}) {
-	const parent = mkdtempSync(join(tmpdir(), 'catati-dev-'));
+	const parent = mkdtempSync(join(tmpdir(), 'catati-'));
 	t.after(() => rmSync(parent, { recursive: true, force: true }));
 	const root = join(parent, 'repo');
 	mkdirSync(join(root, from), { recursive: true });
@@ -91,14 +91,14 @@ test('env-example flags env templates with another name', (t) => {
 });
 
 test('an allow line suppresses its check until it expires', (t) => {
-	const allowed = 'catati-dev-allow(env-example): tool reads this name; expires 2999-01-01\n';
-	const expired = 'catati-dev-allow(env-example): tool reads this name; expires 2000-01-01\n';
+	const allowed = 'catati-allow(env-example): tool reads this name; expires 2999-01-01\n';
+	const expired = 'catati-allow(env-example): tool reads this name; expires 2000-01-01\n';
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${allowed}KEY=\n` }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${expired}KEY=\n` }, t), {
 		status: 1,
 		lines: [
 			'env-example: example.env: env template is not named .env.example',
-			'allow: example.env: catati-dev-allow(env-example) expired 2000-01-01',
+			'allow: example.env: catati-allow(env-example) expired 2000-01-01',
 		],
 	});
 });
@@ -107,7 +107,7 @@ test('a repo-level allow covers files that cannot hold a comment', (t) => {
 	const files = {
 		...cleanRepo(),
 		'.github/pull_request_template.md': '## Why\n',
-		'.catati-dev-allow': 'catati-dev-allow(templates-equal): migrating to the shared template; expires 2999-01-01\n',
+		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2999-01-01\n',
 	};
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 });
@@ -125,18 +125,18 @@ test('a run outside a git repository prints one line and exits with 2', (t) => {
 	assert.deepEqual(runCheck(cleanRepo(), t, { git: false }), {
 		status: 2,
 		lines: [],
-		errors: ['catati-dev: not inside a git repository'],
+		errors: ['catati: not inside a git repository'],
 	});
 });
 
 test('a file it cannot read prints one line naming the path and exits with 2', (t) => {
 	const { status, lines, errors } = runCheck({ ...cleanRepo(), Makefile: new Link('Makefile') }, t);
 	assert.deepEqual({ status, lines, errors: errors?.length }, { status: 2, lines: [], errors: 1 });
-	assert.match(errors[0], /^catati-dev: cannot read Makefile: ELOOP$/);
+	assert.match(errors[0], /^catati: cannot read Makefile: ELOOP$/);
 });
 
 test('an allow line with a date that does not exist is malformed', (t) => {
-	const line = 'catati-dev-allow(env-example): tool reads this name; expires 2999-02-31';
+	const line = 'catati-allow(env-example): tool reads this name; expires 2999-02-31';
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${line}\nKEY=\n` }, t), {
 		status: 1,
 		lines: ['env-example: example.env: env template is not named .env.example', `allow: example.env: malformed allow: # ${line}`],

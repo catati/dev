@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati-dev.mjs', import.meta.url).pathname;
+const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
 
 const managed = {
@@ -24,7 +24,7 @@ const remaining = ['make-targets: Makefile: file is missing', 'ci-workflow: .git
 const every = (action) => paths.map((path) => `${action} ${path}`);
 
 function sandbox(t, { git = true, files = {} } = {}) {
-	const parent = mkdtempSync(join(tmpdir(), 'catati-dev-'));
+	const parent = mkdtempSync(join(tmpdir(), 'catati-'));
 	t.after(() => rmSync(parent, { recursive: true, force: true }));
 	const root = join(parent, 'repo');
 	const home = join(parent, 'home');
@@ -246,7 +246,7 @@ test('a run that skips a file ends with one line on stderr and exits with 0', as
 			const result = box.run(...args);
 			assert.equal(result.status, 0);
 			assert.equal(skips(result).length, 3);
-			assert.deepEqual(result.errors, ['catati-dev: setup skipped 3 file(s); the standard is not fully applied']);
+			assert.deepEqual(result.errors, ['catati: setup skipped 3 file(s); the standard is not fully applied']);
 		});
 	}
 });
@@ -269,12 +269,12 @@ test('--dry-run shows the findings that would be left after setup', (t) => {
 
 test('a run outside a git repository prints one line and exits with 2', (t) => {
 	const box = sandbox(t, { git: false });
-	assert.deepEqual(box.run(), { status: 2, lines: [], errors: ['catati-dev: not inside a git repository'] });
+	assert.deepEqual(box.run(), { status: 2, lines: [], errors: ['catati: not inside a git repository'] });
 	assert.equal(existsSync(join(box.root, '.github')), false);
 });
 
 test('an unknown option prints one line and exits with 2', (t) => {
 	const box = sandbox(t);
-	assert.deepEqual(box.run('--force'), { status: 2, lines: [], errors: ['catati-dev: setup takes only --dry-run, not --force'] });
+	assert.deepEqual(box.run('--force'), { status: 2, lines: [], errors: ['catati: setup takes only --dry-run, not --force'] });
 	assert.equal(existsSync(join(box.root, '.github')), false);
 });

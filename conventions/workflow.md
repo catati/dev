@@ -50,7 +50,7 @@ The merge-gate trial is the one exception to "Only the operator merges" in [bran
 | The trial covers `catati/dev` only, for its next five PRs from 2026-11-08. The coordinator merges without the operator only when every row below holds at the current head SHA. | None |
 | The required checks are green. | The `main` ruleset (`verify`) |
 | The verified comment names the current head, and its verdict passes. | None |
-| The diff touches no one-way-door path. Run `node bin/catati-dev.mjs check-merge origin/main <head>` from `main`'s copy, never from the PR head, and it exits 0. | `catati-dev check-merge` |
+| The diff touches no one-way-door path. Run `node bin/catati.mjs check-merge origin/main <head>` from `main`'s copy, never from the PR head, and it exits 0. | `catati check-merge` |
 | The diff touches nothing in production. No path list can prove this. | judgment |
 | No commit landed after the verdict. The merge names the verified head SHA, so a later push makes the merge fail. | The merge API's `sha` parameter |
 | The operator reads each merged diff afterwards and notes any they would have rejected. With none rejected, the trial extends to the four app repos. With any, it is tightened first. | None |
@@ -60,7 +60,7 @@ The merge-gate trial is the one exception to "Only the operator merges" in [bran
 
 | Rule | Enforced by |
 | --- | --- |
-| A door PR goes to the operator to merge, after its verified comment. | `catati-dev check-merge` finds the door paths; judgment for production |
+| A door PR goes to the operator to merge, after its verified comment. | `catati check-merge` finds the door paths; judgment for production |
 | Ruleset writes and branch deletes go to the operator. | Auto mode blocks ruleset writes; None for branch deletes |
 | The operator answers in chat. A session never asks for a secret in chat. | None |
 
