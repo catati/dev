@@ -26,6 +26,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | The deploy workflow file is `.github/workflows/deploy.yml`. | `deploy.yml`, not `deploy-firebase.yml`. | judgment |
 | CI has one check named `verify`. | `agents` reports one `verify` check. | judgment |
 | A monorepo has one check per package, named `<package>-verify`. | The `cat-hotel` admin check is `admin-verify`, not `admin/verify`. | judgment |
+| The job that maps the diff to package jobs has the id and check name `changes`. See [ci.md](ci.md). | `needs: changes`, not `needs: paths`. | judgment |
 
 ## Files and folders
 
@@ -56,3 +57,4 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | Firebase projects `catati-app` and `catati-cat-hotel*` | `<repo>-<component>` | Firebase is removed. |
 | `agents/.prod.env` | `.env.example` | No end date. |
 | Repo `catati-horizon` | The repo name is the stem. | The Horizon spike reports. |
+| `cat-hotel` CI checks `<package>/verify` and `tooling/changes` | `<package>-verify`; `changes` | `cat-hotel` renames its checks and its required-check list. |
