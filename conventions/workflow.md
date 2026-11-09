@@ -27,9 +27,11 @@ Each rule names what enforces it. `None` means nothing enforces the rule yet, so
 | Rule | Enforced by |
 | --- | --- |
 | When a verifier passes a PR, one comment on the PR records it. Its first line has the format below. The rest gives the verdict, the verifier's model and the links to the gap issues. | `/catati:verify-pr` |
-| A PR is ready for the operator only when the SHA in that first line equals the PR's current head. | None (#47) |
-| A commit that lands after the comment makes the verdict stale. A new verifier run is needed. | None (#47) |
+| A PR is ready for the operator only when the SHA in that first line equals the PR's current head. | None |
+| A commit that lands after the comment makes the verdict stale. A new verifier run is needed. | None |
 | The marker is a comment, not a commit status or a title suffix. The proxy refuses commit statuses with HTTP 403, and a title suffix would reach the squash commit. | None |
+
+The comment is a record for the operator, and no check blocks a merge on it. The operator dropped the planned `verified` check, issue 47, on 2026-11-08.
 
 The first line of the comment is exactly `Verified at ` and the full 40-character lowercase head SHA, with nothing else on the line. It matches this regular expression:
 
@@ -47,7 +49,7 @@ The merge-gate trial is the one exception to "Only the operator merges" in [bran
 | --- | --- |
 | The trial covers `catati/dev` only, for its next five PRs from 2026-11-08. The coordinator merges without the operator only when every row below holds at the current head SHA. | None |
 | The required checks are green. | The `main` ruleset (`verify`) |
-| The verified comment names the current head, and its verdict passes. | None (#47) |
+| The verified comment names the current head, and its verdict passes. | None |
 | The diff touches no one-way-door path. Run `node bin/catati-dev.mjs check-merge origin/main <head>` from `main`'s copy, never from the PR head, and it exits 0. | `catati-dev check-merge` |
 | The diff touches nothing in production. No path list can prove this. | judgment |
 | No commit landed after the verdict. The merge names the verified head SHA, so a later push makes the merge fail. | The merge API's `sha` parameter |
