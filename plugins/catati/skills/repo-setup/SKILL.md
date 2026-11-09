@@ -32,6 +32,7 @@ The installed package holds the rules as `node_modules/@catati/dev/conventions/`
 Run `node_modules/.bin/catati setup` from the repo root and keep its stdout and stderr.
 
 - Each stdout line `created`, `updated` or `unchanged` names a file it wrote or left as is.
+- Each `removed <path>` line names a file catati/dev no longer manages, such as the old PR template, which setup deleted.
 - Each `skipped <path>: <reason>` line names a file a person must reconcile by hand. Leave those files as they are and list them in the report.
 - The finding lines after the file lines are what `catati check` still finds. Setup does not change the `Makefile`, the CI workflows or the Biome and tsconfig bases, so those findings stay for the repo's own PR.
 
@@ -50,11 +51,10 @@ Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep eve
 1. Run `git status`. With no change, skip to the report.
 2. Commit the changed files, including `package.json` and the lockfile. The repo's git hooks run. Fix what they flag in the files this run changed.
 3. Push the work branch. Never push the base branch.
-4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch:
-   - Title: `repo: Set the repo up to the catati/dev standard`.
+4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch, with its title and body per pstack's Opening a PR playbook (`playbooks/opening-a-pr.md` of the `poteto-mode` skill), such as `chore(repo): set the repo up to the catati/dev standard`.
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`, and note in it that it is part of catati/dev#8.
-   - Body: the repo's `.github/pull_request_template.md`, every section kept, with `Closes #<N>` for that issue. Evidence quotes the setup output and lists each remaining finding and skipped file as a named gap.
-5. Leave the merge to the operator.
+   - Body: add `Closes #<N>` for that issue. Verification quotes the setup output, and Scope lists each remaining finding and skipped file.
+5. Leave the merge to the operator. A re-pin changes `package.json`, a door path in `node_modules/@catati/dev/conventions/workflow.md`.
 
 ## 6. Report
 

@@ -8,14 +8,8 @@ import { test } from 'node:test';
 const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
 
-test('catati/dev carries templates/node-version as the .node-version its pr-format job reads', () => {
-	assert.deepEqual(readFileSync(new URL('../.node-version', import.meta.url)), template('node-version'));
-});
-
 const managed = {
 	'.github/ISSUE_TEMPLATE/issue.yml': 'issue.yml',
-	'.github/pull_request_template.md': 'pull_request_template.md',
-	'.github/workflows/pr-format.yml': 'pr-format.yml',
 	'.github/CODEOWNERS': 'CODEOWNERS',
 	'.githooks/pre-commit': 'githooks/pre-commit',
 	'.githooks/pre-push': 'githooks/pre-push',
@@ -181,6 +175,35 @@ test('a differing managed file is updated, and a hook gets its exec bit back', (
 	assert.deepEqual(box.file('.node-version'), template('node-version'));
 });
 
+const retired = ['.github/pull_request_template.md', '.github/workflows/pr-format.yml'];
+
+test('a run removes each file setup no longer manages, and a second run reports nothing', (t) => {
+	const box = sandbox(t, { files: Object.fromEntries(retired.map((path) => [path, 'old copy\n'])) });
+	const first = box.run();
+	assert.deepEqual(
+		first.lines.filter((line) => line.startsWith('removed ')),
+		retired.map((path) => `removed ${path}`),
+	);
+	for (const path of retired) assert.equal(existsSync(join(box.root, path)), false, path);
+	assert.ok(existsSync(join(box.root, '.github/ISSUE_TEMPLATE/issue.yml')));
+	assert.deepEqual(box.run(), { status: 0, lines: [...every('unchanged'), ...remaining] });
+});
+
+test('--dry-run reports a retired file it would remove and keeps it', (t) => {
+	const box = sandbox(t, { files: { '.github/workflows/pr-format.yml': 'old copy\n' } });
+	assert.ok(box.run('--dry-run').lines.includes('removed .github/workflows/pr-format.yml'));
+	assert.equal(box.file('.github/workflows/pr-format.yml').toString(), 'old copy\n');
+});
+
+test('a retired path that is not a regular file is left as is', (t) => {
+	const box = sandbox(t);
+	mkdirSync(join(box.root, '.github/pull_request_template.md'), { recursive: true });
+	const result = box.run();
+	assert.ok(result.lines.includes('skipped .github/pull_request_template.md: is not a regular file; left as is'));
+	assert.ok(statSync(join(box.root, '.github/pull_request_template.md')).isDirectory());
+	assert.deepEqual(result.errors, ['catati: setup skipped 1 file(s); the standard is not fully applied']);
+});
+
 test('a hook with the right body but no exec bit is updated', (t) => {
 	const box = sandbox(t, { files: { '.githooks/pre-commit': template('githooks/pre-commit') } });
 	chmodSync(join(box.root, '.githooks/pre-commit'), 0o644);
@@ -199,7 +222,7 @@ test('a managed path that is a symlink is left as is', (t) => {
 
 test('a managed directory that is a symlink out of the repo is skipped, and nothing outside changes', async (t) => {
 	const cases = {
-		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md', '.github/workflows/pr-format.yml', '.github/CODEOWNERS'],
+		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/CODEOWNERS', '.github/pull_request_template.md', '.github/workflows/pr-format.yml'],
 		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
 		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
 		'.claude': ['.claude/settings.json'],

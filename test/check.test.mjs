@@ -13,8 +13,6 @@ const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true'
 function cleanRepo() {
 	return {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
-		'.github/pull_request_template.md': template('pull_request_template.md'),
-		'.github/workflows/pr-format.yml': template('pr-format.yml'),
 		'.github/workflows/ci.yml': 'on: push\n',
 		Makefile: cleanMakefile,
 		'.env.example': 'KEY=\n',
@@ -54,21 +52,13 @@ test('a repo that follows every rule passes', (t) => {
 });
 
 test('templates-equal flags a changed and a missing template', (t) => {
-	const files = { ...cleanRepo(), '.github/pull_request_template.md': '## Why\n', '.github/ISSUE_TEMPLATE/issue.yml': undefined };
-	assert.deepEqual(runCheck(files, t), {
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/ISSUE_TEMPLATE/issue.yml': 'name: Issue\n' }, t), {
 		status: 1,
-		lines: [
-			'templates-equal: .github/ISSUE_TEMPLATE/issue.yml: file is missing',
-			'templates-equal: .github/pull_request_template.md: differs from templates/pull_request_template.md',
-		],
+		lines: ['templates-equal: .github/ISSUE_TEMPLATE/issue.yml: differs from templates/issue.yml'],
 	});
-});
-
-test('templates-equal flags a pr-format workflow that differs from the template', (t) => {
-	const files = { ...cleanRepo(), '.github/workflows/pr-format.yml': template('pr-format.yml').toString().replace('pr-format:', 'tooling/pr-format:') };
-	assert.deepEqual(runCheck(files, t), {
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/ISSUE_TEMPLATE/issue.yml': undefined }, t), {
 		status: 1,
-		lines: ['templates-equal: .github/workflows/pr-format.yml: differs from templates/pr-format.yml'],
+		lines: ['templates-equal: .github/ISSUE_TEMPLATE/issue.yml: file is missing'],
 	});
 });
 
@@ -106,7 +96,7 @@ test('an allow line suppresses its check until it expires', (t) => {
 test('a repo-level allow covers files that cannot hold a comment', (t) => {
 	const files = {
 		...cleanRepo(),
-		'.github/pull_request_template.md': '## Why\n',
+		'.github/ISSUE_TEMPLATE/issue.yml': 'name: Issue\n',
 		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2999-01-01\n',
 	};
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });

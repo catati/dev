@@ -22,25 +22,18 @@ Title formats and status label names are in [naming.md](naming.md).
 
 ## Pull requests
 
+PR titles and bodies follow pstack's Opening a PR playbook. catati/dev adds no PR template or format check.
+
 | Rule | Check |
 | --- | --- |
-| `.github/pull_request_template.md` equals `templates/pull_request_template.md`. | `catati check` |
-| `.github/workflows/pr-format.yml` equals `templates/pr-format.yml`. | `catati check` |
-| A PR title is `<area>: <outcome>`. | `catati check-pr` |
-| A PR body keeps the template headings and the Note card in order: `## Why`, the Note card, What changes and Risk, then Summary, Evidence, Guards and Merge Danger. | `catati check-pr` |
-| A PR body has `Closes #N`. | `catati check-pr` |
-| `Closes #N` sits in the Note card, and Summary, Evidence, Guards and Merge Danger sit inside Details. | judgment |
-| Guards has one line per accepted review finding, `- <finding> → <rung>: <artefact or #N>` or `- <finding> → one-off: <reason>`, or `None`. | judgment |
-| Merge Danger sets Door to `two-way` or `one-way`. | `catati check-pr` |
-| Door is `two-way` when a revert restores the previous behaviour, and `one-way` otherwise. | judgment |
-| Merge Danger names the smallest affected surface in Blast Radius. | judgment |
+| A PR body has `Closes #N` for the issue it closes. | judgment |
 
-## Evidence
+## Verification
+
+pstack proves each change. These are the gates a repo gives it to run.
 
 | Rule | Check |
 | --- | --- |
 | `make verify` exits 0 in a fresh `dev` cloud session. | judgment |
 | Each PR gets a preview URL on dev resources. | judgment |
 | `verify-journeys` runs against the preview URL. | judgment |
-| Evidence maps each acceptance criterion to an artefact. | judgment |
-| A blocked step is a named proof gap, never a pass. | judgment |
