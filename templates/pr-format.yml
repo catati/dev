@@ -18,6 +18,9 @@ jobs:
           sparse-checkout: |
             package.json
             .node-version
+            /bin/catati.mjs
+            /lib/*.mjs
+            /templates/pull_request_template.md
           sparse-checkout-cone-mode: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
@@ -25,6 +28,11 @@ jobs:
           package-manager-cache: false
       - name: Install the pinned @catati/dev
         run: |
+          if [[ "$(node -p "require('./package.json').name")" == "@catati/dev" ]]; then
+            mkdir -p "$RUNNER_TEMP/catati/node_modules/.bin"
+            ln -s "$PWD/bin/catati.mjs" "$RUNNER_TEMP/catati/node_modules/.bin/catati"
+            exit 0
+          fi
           pin=$(node -p "require('./package.json').devDependencies?.['@catati/dev'] ?? ''")
           if [[ ! "$pin" =~ ^github:catati/dev#[0-9a-f]{40}$ ]]; then
             echo "::error file=package.json::devDependencies['@catati/dev'] must be github:catati/dev#<full commit SHA>"

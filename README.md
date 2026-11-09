@@ -168,6 +168,9 @@ If `PR_TITLE` or `PR_BODY` is unset, it prints one line on stderr and exits with
 The job does not install the repo. It checks out only `package.json` and `.node-version`, reads the `@catati/dev` pin from `devDependencies`, and installs that one package into a temporary folder with `npm install`.
 The same steps work for pnpm and npm repos, because both write the pin to `package.json` as `github:catati/dev#<sha>`. `@catati/dev` has no dependencies, so the install takes about 2 s.
 The job fails when the pin is not `github:catati/dev#<full commit SHA>`. A branch or a short SHA could change under the repo.
+In catati/dev itself, whose `package.json` is named `@catati/dev`, the job has no pin to read. It also checks out `bin/catati.mjs`, `lib/*.mjs` and `templates/pull_request_template.md`, and runs the checker from the PR's own checkout. A repo that holds those paths gets them checked out too, which the job ignores. catati/dev keeps a copy of `templates/node-version` as `.node-version` for this job, and `npm test` fails when the two differ.
+
+catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
 
 ## Run `catati check-merge` before a merge without the operator
 

@@ -8,6 +8,10 @@ import { test } from 'node:test';
 const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
 
+test('catati/dev carries templates/node-version as the .node-version its pr-format job reads', () => {
+	assert.deepEqual(readFileSync(new URL('../.node-version', import.meta.url)), template('node-version'));
+});
+
 const managed = {
 	'.github/ISSUE_TEMPLATE/issue.yml': 'issue.yml',
 	'.github/pull_request_template.md': 'pull_request_template.md',

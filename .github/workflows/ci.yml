@@ -20,4 +20,4 @@ jobs:
         with:
           node-version-file: templates/node-version
           package-manager-cache: false
-      - run: npm test
+      - run: make verify
