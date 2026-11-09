@@ -18,7 +18,7 @@ Each rule names its check. A rule marked `catati check` fails `make verify` when
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
 - [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, PR sections and evidence.
-- [conventions/workflow.md](conventions/workflow.md) covers PR owners, verifiers, the `Verified at <sha>` comment and the merge-gate trial.
+- [conventions/workflow.md](conventions/workflow.md) covers PR owners, the merge-gate trial, doors and sessions.
 
 ## Run `catati check` in `make verify`
 
@@ -202,7 +202,7 @@ The repo's own `.git/config` still applies, so the diff itself sets every option
 
 A changed path that holds a control character (U+0000 to U+001F or U+007F) or a line or paragraph separator (U+2028, U+2029) is a match whatever its name. No real file needs such a name, and the gate cannot be sure what a tool downstream makes of it. The gate prints that path with each such character as `\uXXXX`.
 
-Lockfiles are not doors. CI and the verifier check a dependency bump, and a door on every lockfile would send every bump to the operator.
+Lockfiles are not doors. CI checks a dependency bump, and a door on every lockfile would send every bump to the operator.
 
 It prints one line per match, as `one-way-door: <path>`, and exits with 1. A symlink adds ` (symlink)` and a submodule adds ` (submodule)` to its line, and a door path that is also a link prints once. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
@@ -224,7 +224,6 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 | Part | What it does |
 | --- | --- |
 | `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` poteto line, the conventions link and the rule table, then opens one PR. Run it again after each `catati/dev` release. |
-| `/catati:verify-pr <PR URL>` | Spawns an adversarial verifier on another model family at the PR's head SHA. On a pass it files each minor gap as an issue and posts the `Verified at <sha>` comment that [conventions/workflow.md](conventions/workflow.md) defines. It never merges or pushes. |
 | SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
