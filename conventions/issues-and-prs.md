@@ -6,7 +6,7 @@ Title formats and status label names are in [naming.md](naming.md).
 
 | Rule | Check |
 | --- | --- |
-| `CLAUDE.md` says "Build with `/pstack:poteto-mode`. This file wins over poteto on …" and names each override. | judgment |
+| `CLAUDE.md` says "Build with `/pstack:poteto-mode`." | judgment |
 | `CLAUDE.md` links to `catati/dev/conventions/`. | judgment |
 | `CLAUDE.md` keeps a rule table that pairs each rule with what enforces it. | judgment |
 

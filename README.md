@@ -39,8 +39,8 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 To install the package, add it as a dev dependency pinned to a commit of this repo:
 
 ```sh
-pnpm add -D github:catati/dev#<sha>
-npm install -D github:catati/dev#<sha>
+pnpm add -D 'git+https://github.com/catati/dev.git#<sha>'
+npm install -D 'git+https://github.com/catati/dev.git#<sha>'
 ```
 
 The package is `@catati/dev`, so the pin sits in `devDependencies` under the key `"@catati/dev"`, and its command is `catati`.
@@ -166,8 +166,8 @@ If `PR_TITLE` or `PR_BODY` is unset, it prints one line on stderr and exits with
 
 `setup` copies [templates/pr-format.yml](templates/pr-format.yml) to `.github/workflows/pr-format.yml`. The file is the same in every repo, and its job is named `pr-format`.
 The job does not install the repo. It checks out only `package.json` and `.node-version`, reads the `@catati/dev` pin from `devDependencies`, and installs that one package into a temporary folder with `npm install`.
-The same steps work for pnpm and npm repos, because both write the pin to `package.json` as `github:catati/dev#<sha>`. `@catati/dev` has no dependencies, so the install takes about 2 s.
-The job fails when the pin is not `github:catati/dev#<full commit SHA>`. A branch or a short SHA could change under the repo.
+The same steps work for pnpm and npm repos, because both keep the pin in `package.json` as `git+https://github.com/catati/dev.git#<sha>`. `@catati/dev` has no dependencies, so the install takes about 2 s.
+The job fails when the pin is not `git+https://github.com/catati/dev.git#<full commit SHA>`. A branch or a short SHA could change under the repo. A `github:` spec fails too: it installs from `codeload.github.com`, which a cloud session reaches only for the repos attached to it, while a `git+https` spec goes through the session's git proxy.
 In catati/dev itself, whose `package.json` is named `@catati/dev`, the job has no pin to read. It also checks out `bin/catati.mjs`, `lib/*.mjs` and `templates/pull_request_template.md`, and runs the checker from the PR's own checkout. A repo that holds those paths gets them checked out too, which the job ignores. catati/dev keeps a copy of `templates/node-version` as `.node-version` for this job, and `npm test` fails when the two differ.
 
 catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
@@ -227,7 +227,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 
 | Part | What it does |
 | --- | --- |
-| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` poteto line, the conventions link and the rule table, then opens one PR. Run it again after each `catati/dev` release. |
+| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` line "Build with `/pstack:poteto-mode`.", the conventions link and the rule table, then opens one PR. Run it again after each `catati/dev` release. |
 | SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
