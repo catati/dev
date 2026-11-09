@@ -35,11 +35,18 @@ test('the plugin has no top-level bin directory, which claude.ai rejects', () =>
 test('each skill names its own folder and has a description', () => {
 	const skills = join(pluginRoot, 'skills');
 	const names = readdirSync(skills);
-	assert.deepEqual(names, ['repo-setup']);
+	assert.deepEqual(names, ['repo-setup', 'verify-pr']);
 	for (const name of names) {
 		const frontmatter = readFileSync(join(skills, name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
 		assert.match(frontmatter, new RegExp(`^name: ${name}$`, 'm'));
 		assert.match(frontmatter, /^description: \S/m);
+	}
+});
+
+test('verify-pr and conventions/workflow.md state the same verified-comment format', () => {
+	const format = '^Verified at [0-9a-f]{40}$';
+	for (const path of [join(pluginRoot, 'skills', 'verify-pr', 'SKILL.md'), join(repo, 'conventions', 'workflow.md')]) {
+		assert.ok(readFileSync(path, 'utf8').includes(format), `${path} states ${format}`);
 	}
 });
 
