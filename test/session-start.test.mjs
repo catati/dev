@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati-dev.mjs', import.meta.url).pathname;
+const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const rule = readFileSync(new URL('../templates/pstack-models.md', import.meta.url));
 const setupScript = readFileSync(new URL('../env/setup.sh', import.meta.url), 'utf8');
 
 function sandbox(t, { git = true, githooks = true, files = {} } = {}) {
-	const parent = mkdtempSync(join(tmpdir(), 'catati-dev-'));
+	const parent = mkdtempSync(join(tmpdir(), 'catati-'));
 	t.after(() => rmSync(parent, { recursive: true, force: true }));
 	const root = join(parent, 'repo');
 	const home = join(parent, 'home');
@@ -82,7 +82,7 @@ test('a repo without .githooks keeps its hooks path unset', (t) => {
 test('a hooks path the user set elsewhere is kept, with a warning', (t) => {
 	const box = sandbox(t);
 	execFileSync('git', ['config', 'core.hooksPath', '.husky'], { cwd: box.root });
-	assert.deepEqual(box.run(), { status: 0, lines: ['catati-dev: hooks-path: core.hooksPath is .husky, not .githooks; left as is'] });
+	assert.deepEqual(box.run(), { status: 0, lines: ['catati: hooks-path: core.hooksPath is .husky, not .githooks; left as is'] });
 	assert.equal(box.hooksPath(), '.husky');
 });
 
@@ -95,14 +95,14 @@ test('a run from a subdirectory sets up the whole repo', (t) => {
 
 test('a run outside a git repository prints one line and exits with 2', (t) => {
 	const box = sandbox(t, { git: false });
-	assert.deepEqual(box.run(), { status: 2, lines: [], errors: ['catati-dev: not inside a git repository'] });
+	assert.deepEqual(box.run(), { status: 2, lines: [], errors: ['catati: not inside a git repository'] });
 	assert.equal(existsSync(box.rulePath), false);
 });
 
 test('a node older than 24.15 is a warning, and the other steps still run', (t) => {
 	const box = sandbox(t);
 	box.fake('node', '24.14.9');
-	assert.deepEqual(box.run(), { status: 0, lines: ['catati-dev: node 24.14.9 is older than 24.15'] });
+	assert.deepEqual(box.run(), { status: 0, lines: ['catati: node 24.14.9 is older than 24.15'] });
 	assert.equal(box.hooksPath(), '.githooks');
 	assert.deepEqual(readFileSync(box.rulePath), rule);
 });
@@ -110,7 +110,7 @@ test('a node older than 24.15 is a warning, and the other steps still run', (t) 
 test('a pnpm that differs from packageManager is a warning', (t) => {
 	const box = sandbox(t, { files: { 'package.json': '{ "packageManager": "pnpm@10.30.3+sha512.abc" }\n' } });
 	box.fake('corepack', '10.4.1');
-	assert.deepEqual(box.run(), { status: 0, lines: ['catati-dev: corepack runs pnpm 10.4.1, but packageManager asks for 10.30.3'] });
+	assert.deepEqual(box.run(), { status: 0, lines: ['catati: corepack runs pnpm 10.4.1, but packageManager asks for 10.30.3'] });
 	box.fake('corepack', '10.30.3');
 	assert.deepEqual(box.run(), { status: 0, lines: [] });
 });
@@ -123,7 +123,7 @@ test('a corepack that hangs is a warning within the time bound', (t) => {
 	const seconds = (performance.now() - started) / 1000;
 	assert.deepEqual(result, {
 		status: 0,
-		lines: ['catati-dev: corepack pnpm --version timed out after 3 s, so pnpm 10.30.3 from packageManager is not available'],
+		lines: ['catati: corepack pnpm --version timed out after 3 s, so pnpm 10.30.3 from packageManager is not available'],
 	});
 	assert.ok(seconds < 5, `took ${seconds.toFixed(1)} s`);
 	assert.equal(box.hooksPath(), '.githooks');

@@ -14,15 +14,15 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| The Makefile has the targets `install`, `test`, `e2e`, `verify`, `lint` and `help`. | `make e2e`, not `make e2e-test`. | `catati-dev check` |
+| The Makefile has the targets `install`, `test`, `e2e`, `verify`, `lint` and `help`. | `make e2e`, not `make e2e-test`. | `catati check` |
 | The Makefile has the targets `dev` and `deploy-dev`. | `make deploy-dev` deploys to the dev account. | judgment |
-| `make verify` runs `catati-dev check`. | `make verify` fails when `.github/pull_request_template.md` differs from `templates/`. | judgment |
+| `make verify` runs `catati check`. | `make verify` fails when `.github/pull_request_template.md` differs from `templates/`. | judgment |
 
 ## CI workflows and checks
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| The CI workflow file is `.github/workflows/ci.yml`. | `ci.yml`, not `checks.yml`. | `catati-dev check` |
+| The CI workflow file is `.github/workflows/ci.yml`. | `ci.yml`, not `checks.yml`. | `catati check` |
 | The deploy workflow file is `.github/workflows/deploy.yml`. | `deploy.yml`, not `deploy-firebase.yml`. | judgment |
 | CI has one check named `verify`. | `agents` reports one `verify` check. | judgment |
 | A monorepo has one check per package, named `<package>-verify`. | The `cat-hotel` admin check is `admin-verify`, not `admin/verify`. | judgment |
@@ -32,16 +32,16 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| An env template is named `.env.example`. | `admin/.env.example` | `catati-dev check` |
+| An env template is named `.env.example`. | `admin/.env.example` | `catati check` |
 | Docs live in `docs/adr`, `docs/agents`, `docs/research` and `docs/evidence`. | An architecture decision goes in `docs/adr/`. | judgment |
 
 ## Shared package
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| A repo gets shared code as one dev dependency named `catati-dev`, pinned in the lockfile. | `"catati-dev"` in `devDependencies`, with its version fixed in the lockfile. | judgment |
+| A repo gets shared code as one dev dependency named `@catati/dev`, pinned in the lockfile. | `"@catati/dev"` in `devDependencies`, with its version fixed in the lockfile. | judgment |
 | Code moves into `catati/dev` only when two or more repos need it unchanged. | A script that one repo uses stays in that repo. | judgment |
-| `catati/dev` has no reusable workflow, bot or sync job. | A repo runs `npx catati-dev check` from its own `ci.yml`. | judgment |
+| `catati/dev` has no reusable workflow, bot or sync job. | A repo runs `npx catati check` from its own `ci.yml`. | judgment |
 
 ## Titles and labels
 

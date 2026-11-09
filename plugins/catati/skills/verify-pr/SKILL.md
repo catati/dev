@@ -59,7 +59,7 @@ Do each step and keep its command and output:
    - config: `.gitattributes`, `git config` keys such as `core.*` and `diff.*`, repo-local config files the code reads;
    - the gate's own code: can the PR change what the gate runs, so it passes itself?
    Show each attempt's command and result.
-7. PR format. Run `check-pr` from the base checkout, never from `head`, since the PR could edit it to pass itself. Write the PR title and body to files from `gh api repos/<owner>/<repo>/pulls/<n> --jq .title` and `--jq .body`. In catati/dev, run `PR_TITLE="$(cat title)" PR_BODY="$(cat body)" node base/bin/catati-dev.mjs check-pr`. Elsewhere, install `base` and run `base/node_modules/.bin/catati-dev check-pr` the same way. Paste its output and exit code.
+7. PR format. Run `check-pr` from the base checkout, never from `head`, since the PR could edit it to pass itself. Write the PR title and body to files from `gh api repos/<owner>/<repo>/pulls/<n> --jq .title` and `--jq .body`. In catati/dev, run `PR_TITLE="$(cat title)" PR_BODY="$(cat body)" node base/bin/catati.mjs check-pr`. Elsewhere, install `base` and run `base/node_modules/.bin/catati check-pr` the same way. Paste its output and exit code.
 
 Severity:
 - blocker: an acceptance criterion fails, or the change is unsafe to merge, such as a false pass in a gate or a leaked credential.

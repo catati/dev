@@ -7,10 +7,10 @@ import { test } from 'node:test';
 import { matchesDoorGlob } from '../lib/check-merge.mjs';
 
 const packageRoot = new URL('../', import.meta.url).pathname;
-const cli = join(packageRoot, 'bin/catati-dev.mjs');
+const cli = join(packageRoot, 'bin/catati.mjs');
 
 function repo(t) {
-	const parent = mkdtempSync(join(tmpdir(), 'catati-dev-'));
+	const parent = mkdtempSync(join(tmpdir(), 'catati-'));
 	t.after(() => rmSync(parent, { recursive: true, force: true }));
 	const root = join(parent, 'repo');
 	mkdirSync(root);
@@ -115,7 +115,7 @@ const doorExamples = [
 	'templates/githooks/pre-push',
 	'templates/CODEOWNERS',
 	'templates/pull_request_template.md',
-	'bin/catati-dev.mjs',
+	'bin/catati.mjs',
 	'lib/check-merge.mjs',
 	'lib/repo.mjs',
 	'MAKEFILE',
@@ -172,7 +172,7 @@ function dynamicImports(source, path) {
 
 function commandEntry(source, name) {
 	const key = source.match(new RegExp(`^\\s*'${name}':`, 'm'));
-	assert.ok(key, `bin/catati-dev.mjs has no ${name} entry`);
+	assert.ok(key, `bin/catati.mjs has no ${name} entry`);
 	const rest = source.slice(key.index + key[0].length);
 	return rest.slice(0, rest.search(/\n\s*(?:'[^']+'|\w+):|\n\};/));
 }
@@ -187,8 +187,8 @@ function gateClosure(read = (file) => readFileSync(file, 'utf8')) {
 		for (const spec of specs ?? [...staticImports(source), ...dynamicImports(source, path)]) if (spec.startsWith('.')) visit(join(dirname(file), spec));
 	};
 	const bin = read(cli);
-	dynamicImports(bin, 'bin/catati-dev.mjs');
-	visit(cli, [...staticImports(bin), ...dynamicImports(commandEntry(bin, 'check-merge'), 'bin/catati-dev.mjs')]);
+	dynamicImports(bin, 'bin/catati.mjs');
+	visit(cli, [...staticImports(bin), ...dynamicImports(commandEntry(bin, 'check-merge'), 'bin/catati.mjs')]);
 	return [...seen, 'package.json'].sort();
 }
 
@@ -207,7 +207,7 @@ test('the closure follows the check-merge entry and refuses an import it cannot 
 
 test('every file the check-merge command loads, and package.json, is a one-way door', (t) => {
 	const closure = gateClosure();
-	assert.deepEqual(closure, ['bin/catati-dev.mjs', 'lib/check-merge.mjs', 'lib/repo.mjs', 'package.json']);
+	assert.deepEqual(closure, ['bin/catati.mjs', 'lib/check-merge.mjs', 'lib/repo.mjs', 'package.json']);
 	const { commit, run } = repo(t);
 	const base = commit({ 'README.md': 'a\n' });
 	const head = commit(Object.fromEntries(closure.map((path) => [path, 'x\n'])));
@@ -298,7 +298,7 @@ test('an unknown or inherited command name prints usage and exits with 2', () =>
 	for (const name of ['constructor', '__proto__', 'toString', 'nope']) {
 		const { status, stderr } = spawnSync(process.execPath, [cli, name], { encoding: 'utf8' });
 		assert.equal(status, 2, name);
-		assert.match(stderr, /^usage: catati-dev </, name);
+		assert.match(stderr, /^usage: catati </, name);
 	}
 });
 
@@ -325,13 +325,13 @@ test('only the head side of the merge base counts, as in base...head', (t) => {
 test('a bad argument or a run outside a git repo prints one line and exits with 2', (t) => {
 	const { commit, parent, run } = repo(t);
 	const head = commit({ 'README.md': 'a\n' });
-	const usage = { status: 2, lines: [], errors: ['usage: catati-dev check-merge <base> <head>'] };
+	const usage = { status: 2, lines: [], errors: ['usage: catati check-merge <base> <head>'] };
 	assert.deepEqual(run([]), usage);
 	assert.deepEqual(run([head]), usage);
 	assert.deepEqual(run([head, head, head]), usage);
-	assert.deepEqual(run(['nope', head]), { status: 2, lines: [], errors: ['catati-dev: check-merge: nope is not a commit'] });
-	assert.deepEqual(run(['--output=x', head]), { status: 2, lines: [], errors: ['catati-dev: check-merge: --output=x is not a commit'] });
-	assert.deepEqual(run(['a', 'b'], parent), { status: 2, lines: [], errors: ['catati-dev: not inside a git repository'] });
+	assert.deepEqual(run(['nope', head]), { status: 2, lines: [], errors: ['catati: check-merge: nope is not a commit'] });
+	assert.deepEqual(run(['--output=x', head]), { status: 2, lines: [], errors: ['catati: check-merge: --output=x is not a commit'] });
+	assert.deepEqual(run(['a', 'b'], parent), { status: 2, lines: [], errors: ['catati: not inside a git repository'] });
 });
 
 function submoduleCases(t, setup, ignore = '') {

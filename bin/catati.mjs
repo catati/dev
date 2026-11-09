@@ -9,7 +9,7 @@ const commands = {
 
 const name = process.argv[2];
 if (!Object.hasOwn(commands, name)) {
-	console.error(`usage: catati-dev <${Object.keys(commands).join('|')}>`);
+	console.error(`usage: catati <${Object.keys(commands).join('|')}>`);
 	process.exit(2);
 }
 const command = await commands[name]();
