@@ -102,7 +102,7 @@ Report in this order:
    Gaps filed: <#N links, or None>
    ```
 
-The first line matches `^Verified at [0-9a-f]{40}$`, as `conventions/workflow.md` in catati/dev states, and #47's `verified` check reads it. Keep it exactly that: the full lowercase SHA, no Markdown, nothing after it.
+The first line matches `^Verified at [0-9a-f]{40}$`, as `conventions/workflow.md` in catati/dev states. Keep it exactly that: the full lowercase SHA, no Markdown, nothing after it.
 
 ## 7. Report
 

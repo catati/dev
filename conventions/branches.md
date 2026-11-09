@@ -16,7 +16,7 @@
 | Rule | Check |
 | --- | --- |
 | A PR merges by squash only. | judgment |
-| Only the operator merges. | judgment |
+| Only the operator merges, except under the merge-gate trial in [workflow.md](workflow.md). | judgment |
 | An `ask` permission rule covers `gh pr merge` and the GitHub MCP merge tool. | judgment |
 
 ## Session start
