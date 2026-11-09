@@ -34,8 +34,8 @@ jobs:
             exit 0
           fi
           pin=$(node -p "require('./package.json').devDependencies?.['@catati/dev'] ?? ''")
-          if [[ ! "$pin" =~ ^github:catati/dev#[0-9a-f]{40}$ ]]; then
-            echo "::error file=package.json::devDependencies['@catati/dev'] must be github:catati/dev#<full commit SHA>"
+          if [[ ! "$pin" =~ ^git\+https://github\.com/catati/dev\.git#[0-9a-f]{40}$ ]]; then
+            echo "::error file=package.json::devDependencies['@catati/dev'] must be git+https://github.com/catati/dev.git#<full commit SHA>"
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/catati"
