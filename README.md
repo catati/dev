@@ -1,5 +1,7 @@
 # catati/dev
 
+Catati repos fully adopt pstack for development, and everything follows pstack. catati/dev exists to make each repo fully adopt pstack: it supplies what a repo needs for pstack to work there, and adds nothing pstack already handles.
+
 This repo is the Catati dev cloud environment (`catati-dev` on claude.ai/code), as files.
 Each field of the environment form has one source here. Change the file, not the form.
 
@@ -12,13 +14,13 @@ Each field of the environment form has one source here. Change the file, not the
 
 ## Conventions
 
-`conventions/` holds the rules every Catati repo follows. `templates/` holds the files that `catati setup` and `catati session-start` write.
-Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `catati check-pr` fails the `pr-format` check on the PR. A rule marked `judgment` needs a reviewer.
+`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` and `catati session-start` write.
+Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
 - [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
-- [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, PR sections and evidence.
-- [conventions/workflow.md](conventions/workflow.md) covers PR owners, the merge-gate trial, doors and sessions.
+- [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, `Closes #N` and the verify gates.
+- [conventions/workflow.md](conventions/workflow.md) covers the merge rule, doors and sessions.
 - [conventions/testing.md](conventions/testing.md) defines the unit, integration and e2e layers, and what agents prove on dev and leave to production.
 
 ## Run `catati check` in `make verify`
@@ -31,7 +33,7 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 
 | Check | Fails when |
 | --- | --- |
-| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml`, `.github/pull_request_template.md` or `.github/workflows/pr-format.yml` is missing or differs by a byte from `templates/`. |
+| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` is missing or differs by a byte from `templates/`. |
 | `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint` or `help` target. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
 | `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
@@ -115,14 +117,13 @@ Run it again at any time to bring the repo up to date. A run on a repo that is a
 | File | What `setup` does |
 | --- | --- |
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
-| `.github/pull_request_template.md` | Copies `templates/pull_request_template.md`. |
-| `.github/workflows/pr-format.yml` | Copies `templates/pr-format.yml`, the workflow that runs `catati check-pr` on each PR. |
 | `.github/CODEOWNERS` | Adds each line of `templates/CODEOWNERS` that the file lacks, at the end and in template order. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
-| `.node-version` | Copies `templates/node-version`, which holds `24`. |
+| `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
 | `.claude/settings.json` | Adds each entry of `templates/claude-settings.json` that the file lacks. The template asks before `gh pr merge` and before the GitHub MCP merge tool. |
 
 It prints one line per file, as `created <path>`, `updated <path>` or `unchanged <path>`.
+It also deletes each file it used to manage and no longer does, `.github/pull_request_template.md` and `.github/workflows/pr-format.yml`, and prints `removed <path>` for each one it finds. A second run finds none and prints nothing for them. It skips such a path when it is not a regular file or sits under a symlinked directory.
 A copy replaces the whole file when one byte differs, and keeps the file's mode.
 The CODEOWNERS merge keeps every line the repo already has, so a repo can add its own owner rules.
 The settings merge keeps every key the repo already has, and adds new list entries at the end of the list.
@@ -140,41 +141,11 @@ A caller such as a skill reads stderr to learn that the repo needs a person to l
 
 `setup` does not touch the `Makefile`, `ci.yml`, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
 
-## Run `catati check-pr` in the `pr-format` workflow
-
-`catati check-pr` checks the title and body of a PR against the rules marked `catati check-pr` in [conventions/issues-and-prs.md](conventions/issues-and-prs.md).
-It reads the title from `PR_TITLE`, the body from `PR_BODY` and the author from `PR_ACTOR`.
-It takes the section order from `templates/pull_request_template.md` in the installed package, the same file that `templates-equal` keeps in the repo.
-
-| Part | Fails when |
-| --- | --- |
-| title | The title does not read `<area>: <outcome>`, such as `admin: Warn before an admin change overbooks a room`. |
-| body | A heading or the `> [!NOTE]` card of the template is missing or out of order. |
-| body | The body has no `Closes #<issue number>`. |
-| body | Merge Danger has no ``**Door:** `two-way` `` or ``**Door:** `one-way` ``. |
-
-It prints one line per finding, as `<part>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
-In GitHub Actions, each line starts with `::error::`, so the finding shows on the PR.
-A PR whose author ends in `[bot]`, such as `dependabot[bot]`, is skipped with one line and exit 0.
-If `PR_TITLE` or `PR_BODY` is unset, it prints one line on stderr and exits with 2.
-
-`check-pr` has these known limits, carried over from cat-hotel. A reviewer checks them:
-
-- It checks that each section is present, not that it is filled. The unfilled template plus `Closes #<issue number>` passes.
-- It finds each heading as a substring, so `### Summary` counts as `## Summary`.
-- It counts a heading or the card inside an HTML comment as present.
-
-`setup` copies [templates/pr-format.yml](templates/pr-format.yml) to `.github/workflows/pr-format.yml`. The file is the same in every repo, and its job is named `pr-format`.
-The job does not install the repo. It checks out only `package.json` and `.node-version`, reads the `@catati/dev` pin from `devDependencies`, and installs that one package into a temporary folder with `npm install`.
-The same steps work for pnpm and npm repos, because both keep the pin in `package.json` as `git+https://github.com/catati/dev.git#<sha>`. `@catati/dev` has no dependencies, so the install takes about 2 s.
-The job fails when the pin is not `git+https://github.com/catati/dev.git#<full commit SHA>`. A branch or a short SHA could change under the repo. A `github:` spec fails too: it installs from `codeload.github.com`, which a cloud session reaches only for the repos attached to it, while a `git+https` spec goes through the session's git proxy.
-In catati/dev itself, whose `package.json` is named `@catati/dev`, the job has no pin to read. It also checks out `bin/catati.mjs`, `lib/*.mjs` and `templates/pull_request_template.md`, and runs the checker from the PR's own checkout. A repo that holds those paths gets them checked out too, which the job ignores. catati/dev keeps a copy of `templates/node-version` as `.node-version` for this job, and `npm test` fails when the two differ.
-
 catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
 
 ## Run `catati check-merge` before a merge without the operator
 
-`catati check-merge <base> <head>` checks rule 3 of the merge-gate trial in #8: the diff touches no one-way-door path.
+`catati check-merge <base> <head>` checks the door rule of the Merges decision in #8 and [conventions/workflow.md](conventions/workflow.md): the diff touches no one-way-door path.
 It lists the files that `git diff <base>...<head>` changes, in the git repo that holds the current directory, and matches each one against the list below.
 A rename counts as a delete and an add, so a file that moves into or out of a door path is a match.
 A `<dir>/**` entry also matches the bare `<dir>`.
@@ -201,7 +172,7 @@ The repo's own `.git/config` still applies, so the diff itself sets every option
 | `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
 | `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. These count only at the root, so a `firestore.rules` in a subfolder is not a match. |
 | `**/migrations/**` | Data migrations. |
-| `templates/pr-format.yml`, `templates/claude-settings.json`, `templates/githooks/**`, `templates/CODEOWNERS`, `templates/pull_request_template.md` | `catati setup` copies these into the workflows, settings, Git hooks, code owners and PR template of every repo. |
+| `templates/claude-settings.json`, `templates/githooks/**`, `templates/CODEOWNERS` | `catati setup` copies these into the settings, Git hooks and code owners of every repo. |
 | `bin/catati.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test follows the `check-merge` entry of the command table and fails when it loads a module outside this list, or when any module it loads has an `import()` whose target is not a literal. |
 
 A changed path that holds a control character (U+0000 to U+001F or U+007F) or a line or paragraph separator (U+2028, U+2029) is a match whatever its name. No real file needs such a name, and the gate cannot be sure what a tool downstream makes of it. The gate prints that path with each such character as `\uXXXX`.
@@ -227,7 +198,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 
 | Part | What it does |
 | --- | --- |
-| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` line "Build with `/pstack:poteto-mode`.", the conventions link and the rule table, then opens one PR. Run it again after each `catati/dev` release. |
+| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` line "Build with `/pstack:poteto-mode`.", the conventions link and the rule table, then opens one PR per pstack's Opening a PR. Run it again after each `catati/dev` release. |
 | SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
