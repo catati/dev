@@ -9,6 +9,9 @@ api.cloudflare.com
 *.supabase.co
 catati-dev-store.myshopify.com
 accounts.shopify.com
+app.shopify.com
+partners.shopify.com
+destinations.shopifysvc.com
 cdn.shopify.com
 slack.com
 github.com
