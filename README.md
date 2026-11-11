@@ -18,11 +18,10 @@ Each field of the environment form has one source here. Change the file, not the
 Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
-- [conventions/branches.md](conventions/branches.md) covers branches, merges, session start, environments and deploys.
-- [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, `Closes #N` and the verify gates.
-- [conventions/workflow.md](conventions/workflow.md) covers the merge rule, doors and sessions.
+- [conventions/branches.md](conventions/branches.md) covers branches, the merge permission prompt, session start, environments and deploys.
+- [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues and the verify gates.
 - [conventions/ci.md](conventions/ci.md) covers the `changes` job that runs only the CI jobs a diff affects, and how to gate them.
-- [conventions/testing.md](conventions/testing.md) defines the unit, integration and e2e layers, and what agents prove on dev and leave to production.
+- [conventions/testing.md](conventions/testing.md) maps the unit, integration and e2e layers to make targets, and lists what only production exercises.
 
 ## Run `catati check` in `make verify`
 
@@ -144,9 +143,9 @@ A caller such as a skill reads stderr to learn that the repo needs a person to l
 
 catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
 
-## Run `catati check-merge` before a merge without the operator
+## Run `catati check-merge` to list one-way-door paths
 
-`catati check-merge <base> <head>` checks the door rule of the Merges decision in #8 and [conventions/workflow.md](conventions/workflow.md): the diff touches no one-way-door path.
+`catati check-merge <base> <head>` reports whether the diff touches a one-way-door path.
 It lists the files that `git diff <base>...<head>` changes, in the git repo that holds the current directory, and matches each one against the list below.
 A rename counts as a delete and an add, so a file that moves into or out of a door path is a match.
 A `<dir>/**` entry also matches the bare `<dir>`.
@@ -184,7 +183,7 @@ It prints one line per match, as `one-way-door: <path>`, and exits with 1. A sym
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
 A failed git call or diff output it cannot parse also exits with 2. That covers only output git prints. An entry that git leaves out is unseen, which is why the gate sets the config that decides what git prints.
 
-The rule also names "anything touching production". No path list can prove that a change leaves production alone, so that part stays a judgment for the coordinator. Exit 0 means only that no listed path changed.
+The rule also names "anything touching production". No path list can prove that a change leaves production alone. Exit 0 means only that no listed path changed.
 A deploy script that a `Makefile` target calls, such as `scripts/deploy.sh`, is an example of a change the list does not see.
 
 Run the gate from the base branch's copy of `@catati/dev`, never from the PR head. The head's copy is the code under review, so a PR could edit it to pass itself.

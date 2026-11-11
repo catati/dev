@@ -54,7 +54,7 @@ Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep eve
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch, with its title and body per pstack's Opening a PR playbook (`playbooks/opening-a-pr.md` of the `poteto-mode` skill), such as `chore(repo): set the repo up to the catati/dev standard`.
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`, and note in it that it is part of catati/dev#8.
    - Body: add `Closes #<N>` for that issue. Verification quotes the setup output, and Scope lists each remaining finding and skipped file.
-5. Leave the merge to the operator. A re-pin changes `package.json`, a door path in `node_modules/@catati/dev/conventions/workflow.md`.
+5. Leave the merge to the operator. A re-pin changes `package.json`, a one-way-door path that `catati check-merge` lists.
 
 ## 6. Report
 

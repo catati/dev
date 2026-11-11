@@ -20,20 +20,11 @@ Title formats and status label names are in [naming.md](naming.md).
 | `todo` means planned and ready. `doing` means a builder has it. `review` means its PR is open. `blocked` means it waits on a person. | judgment |
 | Work that spans several issues has one epic issue. Each issue is a native GitHub sub-issue of the epic. | judgment |
 
-## Pull requests
-
-PR titles and bodies follow pstack's Opening a PR playbook. catati/dev adds no PR template or format check.
-
-| Rule | Check |
-| --- | --- |
-| A PR body has `Closes #N` for the issue it closes. | judgment |
-
 ## Verification
 
-pstack proves each change. These are the gates a repo gives it to run.
+The gates a repo provides. pstack decides when to run them.
 
 | Rule | Check |
 | --- | --- |
 | `make verify` exits 0 in a fresh `dev` cloud session. | judgment |
 | Each PR gets a preview URL on dev resources. | judgment |
-| `verify-journeys` runs against the preview URL. | judgment |

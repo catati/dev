@@ -1,4 +1,4 @@
-# Branches, merges and deploys
+# Branches, permissions and deploys
 
 ## Branches
 
@@ -7,15 +7,13 @@
 | `main` is the only long-lived branch. | judgment |
 | `catati-horizon` keeps two long-lived branches, `dev` and `main`, until the Horizon spike reports. | judgment |
 | In `catati-horizon`, a work branch starts from `dev` and its PR targets `dev`. | judgment |
-| A cloud session works on the branch it was assigned, cut from `main`. | judgment |
 | The `main` ruleset requires the verify checks. | judgment |
 | `shopify[bot]` keeps its ruleset bypass. | judgment |
 
-## Merges
+## Permissions
 
 | Rule | Check |
 | --- | --- |
-| The coordinator merges a PR once an independent verifier passes it and `catati check-merge` exits 0. Door paths and production deploys go to the operator. [workflow.md](workflow.md) has the full rule. | judgment |
 | An `ask` permission rule covers `gh pr merge` and the GitHub MCP merge tool. | judgment |
 
 ## Session start
