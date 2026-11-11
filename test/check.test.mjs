@@ -506,3 +506,8 @@ test('wrangler-envs still flags a command whose flag values hold a variable', (t
 		],
 	});
 });
+
+test('wrangler-envs skips a bare variable after a flag that takes no value', (t) => {
+	const makefile = [cleanMakefile, 'deploy-dev:', '\twrangler deploy $(ENV_ARGS)', '\twrangler d1 migrations apply DB --remote $$ENV_ARGS', ''].join('\n');
+	assert.deepEqual(runCheck({ ...cleanRepo(), Makefile: makefile }, t), { status: 0, lines: [] });
+});
