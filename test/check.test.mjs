@@ -494,3 +494,15 @@ test('wrangler-envs reads export and target-specific Makefile variables and skip
 		],
 	});
 });
+
+test('wrangler-envs still flags a command whose flag values hold a variable', (t) => {
+	const makefile = [cleanMakefile, 'NAME = x', 'deploy-dev:', '\twrangler deploy --var SHA:$$GITHUB_SHA', '\twrangler versions upload --message "$$COMMIT"', '\twrangler d1 migrations apply DB --remote --name ${MISSING}', ''].join('\n');
+	assert.deepEqual(runCheck({ ...cleanRepo(), Makefile: makefile }, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: Makefile: wrangler deploy runs without --env: wrangler deploy --var SHA:$$GITHUB_SHA',
+			'wrangler-envs: Makefile: wrangler versions runs without --env: wrangler versions upload --message "$$COMMIT"',
+			'wrangler-envs: Makefile: wrangler d1 runs without --env: wrangler d1 migrations apply DB --remote --name ${MISSING}',
+		],
+	});
+});
