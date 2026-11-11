@@ -69,7 +69,13 @@ test('make-targets flags each missing core target', (t) => {
 
 test('ci-workflow flags a CI workflow with another name', (t) => {
 	const files = { ...cleanRepo(), '.github/workflows/ci.yml': undefined, '.github/workflows/checks.yml': 'on: push\n' };
-	assert.deepEqual(runCheck(files, t), { status: 1, lines: ['ci-workflow: .github/workflows/ci.yml: file is missing'] });
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'ci-workflow: .github/workflows/ci.yml: file is missing',
+			'workflow-names: .github/workflows/checks.yml: workflow is not named ci.yml or deploy.yml',
+		],
+	});
 });
 
 test('env-example flags env templates with another name', (t) => {
@@ -130,5 +136,13 @@ test('an allow line with a date that does not exist is malformed', (t) => {
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${line}\nKEY=\n` }, t), {
 		status: 1,
 		lines: ['env-example: example.env: env template is not named .env.example', `allow: example.env: malformed allow: # ${line}`],
+	});
+});
+
+test('workflow-names flags a workflow that is not ci.yml or deploy.yml', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': 'on: push\n' }, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/apply-dev.yml': 'on: push\n' }, t), {
+		status: 1,
+		lines: ['workflow-names: .github/workflows/apply-dev.yml: workflow is not named ci.yml or deploy.yml'],
 	});
 });

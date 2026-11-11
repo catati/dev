@@ -37,6 +37,7 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 | `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` is missing or differs by a byte from `templates/`. |
 | `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint` or `help` target. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
+| `workflow-names` | A file in `.github/workflows/` is not `ci.yml` or `deploy.yml`. |
 | `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
 
 To install the package, add it as a dev dependency pinned to a commit of this repo:
