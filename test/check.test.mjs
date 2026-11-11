@@ -210,3 +210,16 @@ test('env-names flags a path that names another environment', (t) => {
 		],
 	});
 });
+
+test('secret-names flags a secret named for an environment or the org', (t) => {
+	const clean = 'env:\n  TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n  GH: ${{ secrets.GITHUB_TOKEN }}\n  P: ${{ secrets.PRODUCT_KEY }}\n';
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/ci.yml': clean }, t), { status: 0, lines: [] });
+	const broken = `${clean}  A: \${{ secrets.CATATI_API_TOKEN }}\n  B: \${{ secrets.SHOPIFY_TOKEN_PROD }}\n  C: \${{ secrets.CATATI_API_TOKEN }}\n`;
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/ci.yml': broken }, t), {
+		status: 1,
+		lines: [
+			'secret-names: .github/workflows/ci.yml: secret CATATI_API_TOKEN names an environment or the org; name it for what it holds',
+			'secret-names: .github/workflows/ci.yml: secret SHOPIFY_TOKEN_PROD names an environment or the org; name it for what it holds',
+		],
+	});
+});
