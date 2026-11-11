@@ -1,4 +1,4 @@
-# Branches and deploys
+# Branches
 
 ## Branches
 
@@ -18,20 +18,6 @@
 | `catati session-start` copies `templates/pstack-models.md` to `~/.claude/rules/`. | judgment |
 | `catati session-start` checks the toolchain. | judgment |
 
-## Environments
+## Environments and deploys
 
-| Rule | Check |
-| --- | --- |
-| Dev runs in the `catati-dev` Cloudflare account, on `workers.dev`. | judgment |
-| The domain `catati.nz` is held for a dev root domain. | judgment |
-| Production runs in the `Catati` Cloudflare account. | judgment |
-
-## Deploys
-
-| Rule | Check |
-| --- | --- |
-| A merge to `main` deploys to dev through Workers Builds. | judgment |
-| An agent may deploy to dev. | judgment |
-| A production Worker deploy runs `npx wrangler versions upload`. | judgment |
-| A person promotes a production version in the Cloudflare dashboard. | judgment |
-| No cloud environment or GitHub secret holds a production token. | judgment |
+Environments, deploys and prod access are in [deploy.md](deploy.md).
