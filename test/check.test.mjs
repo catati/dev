@@ -265,3 +265,11 @@ test('wrangler-envs flags a remote Wrangler command without --env and any --keep
 		],
 	});
 });
+
+test('make-targets also needs deploy-dev when the repo has a wrangler.jsonc', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), Makefile: deployMakefile, 'api/wrangler.jsonc': cleanWrangler }, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'api/wrangler.jsonc': cleanWrangler }, t), {
+		status: 1,
+		lines: ['make-targets: Makefile: no target deploy-dev'],
+	});
+});
