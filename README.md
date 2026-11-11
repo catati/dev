@@ -40,6 +40,7 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 | `workflow-names` | A file in `.github/workflows/` is not `ci.yml` or `deploy.yml`. |
 | `env-names` | A `wrangler.jsonc` has an `env` key other than `dev` or `prod`, a workflow's `environment` is not `dev` or `prod` and does not end in `-dev` or `-prod`, or a path outside `node_modules/` has a part or a `.`, `-` or `_` token equal to `production`, `development`, `staging` or `preview`. |
 | `secret-names` | A workflow reads `secrets.<NAME>` where a `_` token of the name is `DEV`, `PROD`, `PRODUCTION`, `DEVELOPMENT`, `STAGING` or `CATATI`. |
+| `wrangler-envs` | A `wrangler.jsonc` lacks `env.dev` or `env.prod`, each with a string `name` and `account_id`. Or a command in a `package.json` script, a `Makefile` or the `deploy_command` and `build_command` of a `builds.json` runs a remote Wrangler command (`deploy`, `versions`, `d1 migrations apply`, `d1 execute --remote`, `secret`, `triggers`, `rollback`) without `--env`, or passes `--keep-vars`. |
 | `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
 
 To install the package, add it as a dev dependency pinned to a commit of this repo:

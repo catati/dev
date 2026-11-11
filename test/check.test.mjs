@@ -223,3 +223,45 @@ test('secret-names flags a secret named for an environment or the org', (t) => {
 		],
 	});
 });
+
+test('wrangler-envs flags a wrangler.jsonc without env.dev and env.prod, each with name and account_id', (t) => {
+	const clean = { ...cleanRepo(), Makefile: deployMakefile, 'api/wrangler.jsonc': cleanWrangler };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const broken = cleanWrangler.replace('"account_id": "prod-account"', '"account_id": 7').replace(/\t\t"dev".*\n/, '');
+	assert.deepEqual(runCheck({ ...clean, 'api/wrangler.jsonc': broken, 'web/wrangler.jsonc': '{ "name": ' }, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: api/wrangler.jsonc: no env.dev',
+			'wrangler-envs: api/wrangler.jsonc: env.prod has no account_id',
+			'wrangler-envs: web/wrangler.jsonc: cannot parse as JSONC',
+		],
+	});
+});
+
+test('wrangler-envs flags a remote Wrangler command without --env and any --keep-vars', (t) => {
+	const scripts = (deploy) => JSON.stringify({ scripts: { dev: 'wrangler dev', types: 'wrangler types', deploy } });
+	const builds = (command) => JSON.stringify({ triggers: [{ build_command: 'pnpm build', deploy_command: command }] });
+	const clean = {
+		...cleanRepo(),
+		Makefile: `${cleanMakefile}check:\n\tpnpm exec wrangler versions upload --dry-run --env dev && \\\n\t  wrangler d1 execute DB --local\n`,
+		'api/package.json': scripts('wrangler d1 migrations apply DB --env=dev --remote && wrangler deploy --env dev'),
+		'cat-hotel/dev/builds.json': builds('npx wrangler deploy --env dev'),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		Makefile: `${cleanMakefile}check:\n\tpnpm exec wrangler versions upload --dry-run || exit 1; \\\n\t  wrangler d1 execute DB --remote\n`,
+		'api/package.json': scripts('wrangler d1 migrations apply DB --remote | tee log; wrangler deploy --env dev --keep-vars'),
+		'cat-hotel/dev/builds.json': builds('npx wrangler deploy'),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: Makefile: wrangler versions runs without --env: pnpm exec wrangler versions upload --dry-run',
+			'wrangler-envs: Makefile: wrangler d1 runs without --env: wrangler d1 execute DB --remote',
+			'wrangler-envs: api/package.json: wrangler d1 runs without --env: wrangler d1 migrations apply DB --remote',
+			'wrangler-envs: api/package.json: passes --keep-vars: wrangler deploy --env dev --keep-vars',
+			'wrangler-envs: cat-hotel/dev/builds.json: wrangler deploy runs without --env: npx wrangler deploy',
+		],
+	});
+});
