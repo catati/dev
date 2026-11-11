@@ -464,3 +464,33 @@ test('workflow-names and workflow reads count only YAML files in .github/workflo
 		lines: ['workflow-names: .github/workflows/plan.yaml: workflow is not named ci.yml or deploy.yml'],
 	});
 });
+
+test('env-names skips a matrix list of environments', (t) => {
+	const workflow = ['jobs:', '  deploy:', '    strategy:', '      matrix:', '        environment: [dev, prod]', '    environment: ${{ matrix.environment }}', ''].join('\n');
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': workflow }, t), { status: 0, lines: [] });
+});
+
+test('resource-names reads development as an env suffix and preview as a component', (t) => {
+	const config = (name) =>
+		JSON.stringify({ name, env: { dev: { name, account_id: 'a' }, prod: { name, account_id: 'b' } } });
+	const files = { ...cleanRepo(), Makefile: deployMakefile, 'wrangler.jsonc': config('repo-link-preview') };
+	const origin = 'https://github.com/catati/repo.git';
+	assert.deepEqual(runCheck(files, t, { origin }), { status: 0, lines: [] });
+	const broken = runCheck({ ...files, 'wrangler.jsonc': config('repo-api-development') }, t, { origin });
+	assert.equal(broken.status, 1);
+	assert.ok(broken.lines.every((line) => line.includes('resource repo-api-development is not repo-<component>')));
+});
+
+test('wrangler-envs reads export and target-specific Makefile variables and skips unexpanded flags', (t) => {
+	const makefile = (lines) => [cleanMakefile, ...lines, ''].join('\n');
+	const clean = makefile(['deploy-dev: ENV_FLAG = --env dev', 'deploy-dev:', '\twrangler deploy $(ENV_FLAG)', 'other:', '\twrangler deploy $$WRANGLER_ENV_ARGS']);
+	assert.deepEqual(runCheck({ ...cleanRepo(), Makefile: clean }, t), { status: 0, lines: [] });
+	const broken = makefile(['export DEPLOY = wrangler deploy', 'override CHECK = wrangler versions upload', 'deploy-dev:', '\t$(DEPLOY)', '\t$(CHECK)']);
+	assert.deepEqual(runCheck({ ...cleanRepo(), Makefile: broken }, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: Makefile: wrangler deploy runs without --env: wrangler deploy',
+			'wrangler-envs: Makefile: wrangler versions runs without --env: wrangler versions upload',
+		],
+	});
+});
