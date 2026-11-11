@@ -200,15 +200,38 @@ test('env-names flags a GitHub environment that is not dev or prod or puts the e
 	});
 });
 
-test('env-names flags a path that names another environment', (t) => {
-	const clean = { ...cleanRepo(), 'shopify.app.prod.toml': '', 'docs/productions.md': '', 'node_modules/x/staging.js': '' };
+test('env-names flags an env config file or Terraform root named for another environment', (t) => {
+	const clean = {
+		...cleanRepo(),
+		'shopify.app.prod.toml': '',
+		'.env.dev': '',
+		'infra/prod/main.tf': '',
+		'preview/index.html': '',
+		'staging/modules/db/main.tf': '',
+		'web/components/link-preview.vue': '',
+		'web/public/og-preview.png': '',
+		'scripts/pr-preview.sh': '',
+		'api/scripts/production-plans.json': '{}',
+		'docs/release-preview.md': '',
+		'node_modules/x/staging.json': '',
+	};
 	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
-	const files = { ...clean, 'shopify.app.production.toml': '', 'preview/index.html': '' };
+	const files = {
+		...clean,
+		'shopify.app.production.toml': '',
+		'api/config.Staging.yaml': '',
+		'.env.development': '',
+		'api/.dev.vars.preview': '',
+		'infra/Staging/main.tf': '',
+	};
 	assert.deepEqual(runCheck(files, t), {
 		status: 1,
 		lines: [
-			'env-names: preview/index.html: path names environment preview; use dev or prod',
+			'env-names: .env.development: path names environment development; use dev or prod',
+			'env-names: api/.dev.vars.preview: path names environment preview; use dev or prod',
+			'env-names: api/config.Staging.yaml: path names environment staging; use dev or prod',
 			'env-names: shopify.app.production.toml: path names environment production; use dev or prod',
+			'env-names: infra/Staging: path names environment staging; use dev or prod',
 		],
 	});
 });
@@ -313,15 +336,6 @@ test('allow lines cover the new checks in a JSONC comment and in .catati-allow',
 	assert.deepEqual(runCheck(files, t, { origin: 'https://github.com/catati/repo' }), { status: 0, lines: [] });
 });
 
-test('env-names skips paths under docs/ and Markdown files', (t) => {
-	const clean = { ...cleanRepo(), 'docs/development/firebase-development.md': '', 'docs/release-preview.md': '', 'notes/staging.md': '' };
-	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
-	assert.deepEqual(runCheck({ ...clean, 'api/scripts/production-plans.json': '{}' }, t), {
-		status: 1,
-		lines: ['env-names: api/scripts/production-plans.json: path names environment production; use dev or prod'],
-	});
-});
-
 test('wrangler-envs reads only Makefile recipe lines and skips echo and printf', (t) => {
 	const makefile = [
 		'# wrangler deploy ships the worker',
@@ -383,5 +397,70 @@ test('resource-names does not treat a Durable Object binding name as a resource'
 	assert.deepEqual(runCheck({ ...files, 'wrangler.jsonc': config.replace('repo-booking', 'booking') }, t, { origin }), {
 		status: 1,
 		lines: ['resource-names: wrangler.jsonc: resource booking is not repo-<component> with no environment suffix'],
+	});
+});
+
+test('wrangler-envs expands Makefile variables and reads commands inside parentheses', (t) => {
+	const makefile = (recipe) =>
+		[
+			'WRANGLER = pnpm exec wrangler',
+			'DEPLOY := $(WRANGLER) deploy',
+			'FLAGS ?= --minify',
+			'FLAGS += --env dev',
+			cleanMakefile,
+			'deploy-dev:',
+			recipe,
+			'',
+		].join('\n');
+	const clean = { ...cleanRepo(), Makefile: makefile('\t$(DEPLOY) ${FLAGS} && (cd api && wrangler deploy --env dev)') };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const broken = makefile('\t$(DEPLOY) --minify\n\t${WRANGLER} versions upload\n\t(cd api && wrangler deploy)');
+	assert.deepEqual(runCheck({ ...clean, Makefile: broken }, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: Makefile: wrangler deploy runs without --env: pnpm exec wrangler deploy --minify',
+			'wrangler-envs: Makefile: wrangler versions runs without --env: pnpm exec wrangler versions upload',
+			'wrangler-envs: Makefile: wrangler deploy runs without --env: wrangler deploy',
+		],
+	});
+});
+
+test('resource-names reads only the resource name paths, at the top level and in each env', (t) => {
+	const config = (names) =>
+		JSON.stringify({
+			name: 'repo-api',
+			vars: { name: 'Catati' },
+			ratelimits: [{ name: 'sign_in_limit', namespace_id: '1001' }],
+			send_email: [{ name: 'mailer' }],
+			durable_objects: { bindings: [{ name: 'counter', class_name: 'Counter' }] },
+			r2_buckets: [{ binding: 'PHOTOS', bucket_name: names[0] }],
+			queues: { producers: [{ binding: 'EVENTS', queue: names[1] }] },
+			workflows: [{ name: names[2], binding: 'BOOKING', class_name: 'Booking' }],
+			env: {
+				dev: { name: 'repo-api', account_id: 'a', vars: { name: 'Catati Dev' }, workflows: [{ name: names[3], class_name: 'Booking' }] },
+				prod: { name: 'repo-api', account_id: 'b' },
+			},
+		});
+	const origin = 'https://github.com/catati/repo.git';
+	const clean = { ...cleanRepo(), Makefile: deployMakefile, 'wrangler.jsonc': config(['repo-photos', 'repo-events', 'repo-booking', 'repo-booking']) };
+	assert.deepEqual(runCheck(clean, t, { origin }), { status: 0, lines: [] });
+	const broken = { ...clean, 'wrangler.jsonc': config(['Photos', 'events', 'repo-booking-prod', 'booking']) };
+	assert.deepEqual(runCheck(broken, t, { origin }), {
+		status: 1,
+		lines: [
+			'resource-names: wrangler.jsonc: resource Photos is not repo-<component> with no environment suffix',
+			'resource-names: wrangler.jsonc: resource events is not repo-<component> with no environment suffix',
+			'resource-names: wrangler.jsonc: resource repo-booking-prod is not repo-<component> with no environment suffix',
+			'resource-names: wrangler.jsonc: resource booking is not repo-<component> with no environment suffix',
+		],
+	});
+});
+
+test('workflow-names and workflow reads count only YAML files in .github/workflows/', (t) => {
+	const files = { ...cleanRepo(), '.github/workflows/README.md': 'Uses secrets.CATATI_API_TOKEN and environment: production\n' };
+	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/plan.yaml': 'on: push\n' }, t), {
+		status: 1,
+		lines: ['workflow-names: .github/workflows/plan.yaml: workflow is not named ci.yml or deploy.yml'],
 	});
 });

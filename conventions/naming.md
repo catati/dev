@@ -17,7 +17,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| The only environment names are `dev` and `prod`. This covers Wrangler `env` keys, Terraform roots, GitHub environments, `ENVIRONMENT` values and file names. | `env.prod`, `cat-hotel/prod`, `shopify.app.prod.toml` | `catati check` for Wrangler `env` keys, GitHub environments and paths outside `docs/` and `.md` files. `ENVIRONMENT` values and Terraform roots need judgment. |
+| The only environment names are `dev` and `prod`. This covers Wrangler `env` keys, Terraform roots, GitHub environments, `ENVIRONMENT` values and file names. | `env.prod`, `cat-hotel/prod`, `shopify.app.prod.toml` | `catati check` for Wrangler `env` keys, GitHub environments, Terraform roots and env config file names such as `shopify.app.<env>.toml` and `.env.<env>`. `ENVIRONMENT` values and other file names need judgment. |
 | A name that carries an environment ends in it, after `-`, or after `:` in a package script. | `deploy-dev`, `deploy:dev`, `plan-prod` | `catati check` for GitHub environments. Other names need judgment. |
 | A secret is named for what it holds, the same in every GitHub environment. | `CLOUDFLARE_API_TOKEN` in `dev` and in `prod`, never `CATATI_API_TOKEN` | `catati check` for env and org tokens; judgment for the same name in every environment |
 

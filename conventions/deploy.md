@@ -21,7 +21,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 
 | Rule | Check |
 | --- | --- |
-| The only environments are `dev` and `prod`. No `staging` or `preview` environment exists. | `catati check` for Wrangler `env` keys, GitHub environments and paths |
+| The only environments are `dev` and `prod`. No `staging` or `preview` environment exists. | `catati check` for Wrangler `env` keys, GitHub environments, Terraform roots and env config file names |
 | A PR preview, when added, runs in `dev` on dev data. | judgment |
 | The prod account holds prod resources only. | judgment |
 | The domain `catati.nz` is held for a dev root domain. | judgment |
