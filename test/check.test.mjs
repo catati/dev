@@ -146,3 +146,67 @@ test('workflow-names flags a workflow that is not ci.yml or deploy.yml', (t) => 
 		lines: ['workflow-names: .github/workflows/apply-dev.yml: workflow is not named ci.yml or deploy.yml'],
 	});
 });
+
+const cleanWrangler = [
+	'{',
+	'\t// shared keys',
+	'\t"name": "repo-api", /* top level */',
+	'\t"vars": { "URL": "https://x.dev/a//b" },',
+	'\t"env": {',
+	'\t\t"dev": { "name": "repo-api", "account_id": "dev-account", },',
+	'\t\t"prod": { "name": "repo-api", "account_id": "prod-account" },',
+	'\t},',
+	'}',
+	'',
+].join('\n');
+
+const deployMakefile = `${cleanMakefile}deploy-dev:\n\t@true\n`;
+
+test('env-names flags a Wrangler env key that is not dev or prod', (t) => {
+	const clean = { ...cleanRepo(), Makefile: deployMakefile, 'api/wrangler.jsonc': cleanWrangler };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const staging = cleanWrangler.replace('"prod": {', '"staging": { "name": "repo-api", "account_id": "a" },\n\t\t"prod": {');
+	assert.deepEqual(runCheck({ ...clean, 'api/wrangler.jsonc': staging }, t), {
+		status: 1,
+		lines: ['env-names: api/wrangler.jsonc: env key staging is not dev or prod'],
+	});
+});
+
+test('env-names flags a GitHub environment that is not dev or prod or puts the env first', (t) => {
+	const clean = [
+		'jobs:',
+		'  plan:',
+		'    environment: plan-prod',
+		'  deploy:',
+		'    environment:',
+		'      name: prod',
+		'      url: https://x.dev',
+		'  other:',
+		"    environment: { name: 'dev' }",
+		'  matrix:',
+		'    environment: ${{ inputs.env }}',
+		'',
+	].join('\n');
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': clean }, t), { status: 0, lines: [] });
+	const broken = clean.replace('plan-prod', 'prod-plan').replace('name: prod', 'name: production');
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': broken }, t), {
+		status: 1,
+		lines: [
+			'env-names: .github/workflows/deploy.yml: environment prod-plan puts the env first; end it in -dev or -prod',
+			'env-names: .github/workflows/deploy.yml: environment production is not dev or prod and does not end in -dev or -prod',
+		],
+	});
+});
+
+test('env-names flags a path that names another environment', (t) => {
+	const clean = { ...cleanRepo(), 'shopify.app.prod.toml': '', 'docs/productions.md': '', 'node_modules/x/staging.js': '' };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = { ...clean, 'shopify.app.production.toml': '', 'preview/index.html': '' };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'env-names: preview/index.html: path names environment preview; use dev or prod',
+			'env-names: shopify.app.production.toml: path names environment production; use dev or prod',
+		],
+	});
+});
