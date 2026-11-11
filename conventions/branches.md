@@ -1,4 +1,4 @@
-# Branches and deploys
+# Branches
 
 ## Branches
 
