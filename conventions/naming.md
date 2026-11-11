@@ -77,6 +77,6 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | `cat-hotel` admin host `admin.catati.co.nz` | Prod hosts are `<component>.<prod domain>`. | Admin moves to `admin.cathotel.nz` at the cutover. |
 | Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. |
 | `terraform` Workers Builds triggers "Deploy main to dev", and checks `cat-hotel-dev/apply`, `cat-hotel-prod/plan` and `cat-hotel-prod/apply` | A deploy job is `<action>-<env>`. | `terraform` renames them. |
-| GitHub environment `development` in `cat-hotel` and `catsper` | `dev` and `prod` only | Each repo renames it. |
+| GitHub environments `development` in `cat-hotel` and `catsper`, and `production` in `catsper` | `dev` and `prod` only | Each repo renames it. |
 | Catsper stem `catati-catsper` | The repo name is the stem. | Catsper renames its resources. |
 | `cat-hotel` CI checks `<package>/verify` and `tooling/changes` | `<package>-verify`; `changes` | `cat-hotel` renames its checks and its required-check list. |
