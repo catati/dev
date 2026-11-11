@@ -18,7 +18,7 @@ Each field of the environment form has one source here. Change the file, not the
 Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
-- [conventions/branches.md](conventions/branches.md) covers branches, the merge permission prompt, session start, environments and deploys.
+- [conventions/branches.md](conventions/branches.md) covers branches, session start, environments and deploys.
 - [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues and the verify gates.
 - [conventions/ci.md](conventions/ci.md) covers the `changes` job that runs only the CI jobs a diff affects, and how to gate them.
 - [conventions/testing.md](conventions/testing.md) maps the unit, integration and e2e layers to make targets, and lists what only production exercises.
