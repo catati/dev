@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { checks } from '../lib/check.mjs';
 
 const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
@@ -310,4 +311,77 @@ test('allow lines cover the new checks in a JSONC comment and in .catati-allow',
 		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01\n',
 	};
 	assert.deepEqual(runCheck(files, t, { origin: 'https://github.com/catati/repo' }), { status: 0, lines: [] });
+});
+
+test('env-names skips paths under docs/ and Markdown files', (t) => {
+	const clean = { ...cleanRepo(), 'docs/development/firebase-development.md': '', 'docs/release-preview.md': '', 'notes/staging.md': '' };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...clean, 'api/scripts/production-plans.json': '{}' }, t), {
+		status: 1,
+		lines: ['env-names: api/scripts/production-plans.json: path names environment production; use dev or prod'],
+	});
+});
+
+test('wrangler-envs reads only Makefile recipe lines and skips echo and printf', (t) => {
+	const makefile = [
+		'# wrangler deploy ships the worker',
+		'DEPLOY = wrangler deploy',
+		cleanMakefile,
+		'deploy-dev:',
+		'\t# wrangler deploy without an env would ship prod',
+		'\t@echo "make deploy-dev runs wrangler deploy --env dev"',
+		"\tprintf 'wrangler deploy\\n' && wrangler deploy --env dev",
+		'',
+	].join('\n');
+	const clean = { ...cleanRepo(), Makefile: makefile };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const broken = makefile.replace('&& wrangler deploy --env dev', '&& wrangler \\\n\t  deploy');
+	assert.deepEqual(runCheck({ ...clean, Makefile: broken }, t), {
+		status: 1,
+		lines: ['wrangler-envs: Makefile: wrangler deploy runs without --env: wrangler deploy'],
+	});
+});
+
+test('wrangler-envs reads -e, make prefixes, versioned wrangler and flag values', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		'package.json': scripts('wrangler deploy -e dev', 'wrangler deploy -e=prod', 'wrangler -c wrangler.jsonc --env dev deploy'),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = { ...clean, 'package.json': scripts('@wrangler deploy', 'npx wrangler@4 deploy', 'wrangler --config x deploy') };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler deploy runs without --env: @wrangler deploy',
+			'wrangler-envs: package.json: wrangler deploy runs without --env: npx wrangler@4 deploy',
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler --config x deploy',
+		],
+	});
+});
+
+test('workflow-names reads the workflows it flags, so an allow line in one works', (t) => {
+	const workflow = '.github/workflows/plan.yml';
+	assert.ok(checks.find((c) => c.id === 'workflow-names').reads([workflow, '.github/workflows/ci.yml']).includes(workflow));
+	const files = { ...cleanRepo(), [workflow]: '# catati-allow(workflow-names): renamed later; expires 2999-01-01\non: push\n' };
+	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
+});
+
+test('resource-names does not treat a Durable Object binding name as a resource', (t) => {
+	const config = JSON.stringify({
+		name: 'repo-api',
+		durable_objects: { bindings: [{ name: 'counter', class_name: 'Counter' }] },
+		workflows: [{ name: 'repo-booking', binding: 'BOOKING', class_name: 'Booking' }],
+		env: {
+			dev: { name: 'repo-api', account_id: 'a', durable_objects: { bindings: [{ name: 'rooms', class_name: 'Rooms' }] } },
+			prod: { name: 'repo-api', account_id: 'b' },
+		},
+	});
+	const files = { ...cleanRepo(), Makefile: deployMakefile, 'wrangler.jsonc': config };
+	const origin = 'https://github.com/catati/repo.git';
+	assert.deepEqual(runCheck(files, t, { origin }), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...files, 'wrangler.jsonc': config.replace('repo-booking', 'booking') }, t, { origin }), {
+		status: 1,
+		lines: ['resource-names: wrangler.jsonc: resource booking is not repo-<component> with no environment suffix'],
+	});
 });

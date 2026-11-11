@@ -17,9 +17,9 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| The only environment names are `dev` and `prod`. This covers Wrangler `env` keys, Terraform roots, GitHub environments, `ENVIRONMENT` values and file names. | `env.prod`, `cat-hotel/prod`, `shopify.app.prod.toml` | `catati check` for Wrangler `env` keys, GitHub environments and paths. `ENVIRONMENT` values and Terraform roots need judgment. |
+| The only environment names are `dev` and `prod`. This covers Wrangler `env` keys, Terraform roots, GitHub environments, `ENVIRONMENT` values and file names. | `env.prod`, `cat-hotel/prod`, `shopify.app.prod.toml` | `catati check` for Wrangler `env` keys, GitHub environments and paths outside `docs/` and `.md` files. `ENVIRONMENT` values and Terraform roots need judgment. |
 | A name that carries an environment ends in it, after `-`, or after `:` in a package script. | `deploy-dev`, `deploy:dev`, `plan-prod` | `catati check` for GitHub environments. Other names need judgment. |
-| A secret is named for what it holds, the same in every GitHub environment. | `CLOUDFLARE_API_TOKEN` in `dev` and in `prod`, never `CATATI_API_TOKEN` | `catati check` |
+| A secret is named for what it holds, the same in every GitHub environment. | `CLOUDFLARE_API_TOKEN` in `dev` and in `prod`, never `CATATI_API_TOKEN` | `catati check` for env and org tokens; judgment for the same name in every environment |
 
 ## Make targets
 
@@ -37,6 +37,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | --- | --- | --- |
 | The CI workflow file is `.github/workflows/ci.yml`. | `ci.yml`, not `checks.yml`. | `catati check` |
 | The deploy workflow file is `.github/workflows/deploy.yml`. | `deploy.yml`, not `deploy-firebase.yml`. | `catati check` |
+| A repo's only workflow files are `.github/workflows/ci.yml` and `deploy.yml`. | `plan.yml` and `apply-dev.yml` move into `ci.yml` and `deploy.yml`. | `catati check` |
 | A deploy job is `<action>-<env>`. | `plan-dev`, `apply-prod`, `deploy-prod` | judgment |
 | CI has one check named `verify`. | `agents` reports one `verify` check. | judgment |
 | A monorepo has one check per package, named `<package>-verify`. | The `cat-hotel` admin check is `admin-verify`, not `admin/verify`. | judgment |
