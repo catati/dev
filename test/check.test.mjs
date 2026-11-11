@@ -22,12 +22,13 @@ function cleanRepo() {
 	};
 }
 
-function runCheck(files, t, { git = true, from = '' } = {}) {
+function runCheck(files, t, { git = true, from = '', origin } = {}) {
 	const parent = mkdtempSync(join(tmpdir(), 'catati-'));
 	t.after(() => rmSync(parent, { recursive: true, force: true }));
 	const root = join(parent, 'repo');
 	mkdirSync(join(root, from), { recursive: true });
 	if (git) execFileSync('git', ['init', '-q'], { cwd: root });
+	if (origin) execFileSync('git', ['remote', 'add', 'origin', origin], { cwd: root });
 	for (const [path, content] of Object.entries(files)) {
 		if (content === undefined) continue;
 		mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -272,4 +273,41 @@ test('make-targets also needs deploy-dev when the repo has a wrangler.jsonc', (t
 		status: 1,
 		lines: ['make-targets: Makefile: no target deploy-dev'],
 	});
+});
+
+test('resource-names flags a Wrangler resource that is not <repo>-<component> or ends in an env', (t) => {
+	const config = (names) =>
+		JSON.stringify({
+			name: names[0],
+			ratelimits: [{ name: 'SIGN_IN_LIMIT' }],
+			env: {
+				dev: { name: 'repo', account_id: 'a', d1_databases: [{ binding: 'DB', database_name: names[1] }] },
+				prod: { name: 'repo', account_id: 'b', queues: { consumers: [{ queue: names[2], dead_letter_queue: names[3] }] } },
+			},
+		});
+	const clean = { ...cleanRepo(), Makefile: deployMakefile };
+	const good = { ...clean, 'wrangler.jsonc': config(['repo-api', 'repo', 'repo-events', 'repo-events-dlq']) };
+	assert.deepEqual(runCheck(good, t, { origin: 'https://github.com/catati/repo.git' }), { status: 0, lines: [] });
+	const bad = { ...clean, 'wrangler.jsonc': config(['catati-repo-api', 'repo-dev', 'repo_events', 'repo-events-dlq']) };
+	assert.deepEqual(runCheck(bad, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck(bad, t, { origin: 'git@github.com:catati/repo' }), {
+		status: 1,
+		lines: [
+			'resource-names: wrangler.jsonc: resource catati-repo-api is not repo-<component> with no environment suffix',
+			'resource-names: wrangler.jsonc: resource repo-dev is not repo-<component> with no environment suffix',
+			'resource-names: wrangler.jsonc: resource repo_events is not repo-<component> with no environment suffix',
+		],
+	});
+});
+
+test('allow lines cover the new checks in a JSONC comment and in .catati-allow', (t) => {
+	const config = cleanWrangler.replace('"repo-api", /* top level */', '"catati-repo-api", // catati-allow(resource-names): renamed later; expires 2999-01-01');
+	const files = {
+		...cleanRepo(),
+		Makefile: deployMakefile,
+		'wrangler.jsonc': config,
+		'package.json': JSON.stringify({ scripts: { deploy: 'wrangler deploy' } }),
+		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01\n',
+	};
+	assert.deepEqual(runCheck(files, t, { origin: 'https://github.com/catati/repo' }), { status: 0, lines: [] });
 });
