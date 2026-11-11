@@ -1,4 +1,4 @@
-# Branches, permissions and deploys
+# Branches and deploys
 
 ## Branches
 
@@ -9,12 +9,6 @@
 | In `catati-horizon`, a work branch starts from `dev` and its PR targets `dev`. | judgment |
 | The `main` ruleset requires the verify checks. | judgment |
 | `shopify[bot]` keeps its ruleset bypass. | judgment |
-
-## Permissions
-
-| Rule | Check |
-| --- | --- |
-| An `ask` permission rule covers `gh pr merge` and the GitHub MCP merge tool. | judgment |
 
 ## Session start
 

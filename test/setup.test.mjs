@@ -14,7 +14,6 @@ const managed = {
 	'.githooks/pre-commit': 'githooks/pre-commit',
 	'.githooks/pre-push': 'githooks/pre-push',
 	'.node-version': 'node-version',
-	'.claude/settings.json': 'claude-settings.json',
 };
 const paths = Object.keys(managed);
 const hooks = ['.githooks/pre-commit', '.githooks/pre-push'];
@@ -73,25 +72,6 @@ const skips = ({ lines }) => lines.filter((line) => line.startsWith('skipped '))
 
 const isExecutable = (box, path) => (statSync(join(box.root, path)).mode & 0o111) === 0o111;
 
-const agentsStyle = `{
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "permissions": {
-    "ask": [
-      "Bash(make deploy-prod*)",
-      "Bash(gh pr merge:*)"
-    ],
-    "deny": [
-      "Read(**/.prod.env)"
-    ]
-  },
-  "sandbox": {
-    "excludedCommands": [
-      "git *"
-    ]
-  }
-}
-`;
-
 test('a first run creates every managed file, then prints what check still finds', (t) => {
 	const box = sandbox(t);
 	assert.deepEqual(box.run(), { status: 0, lines: [...every('created'), ...remaining] });
@@ -106,41 +86,6 @@ test('a second run changes nothing', (t) => {
 	const before = box.snapshot();
 	assert.deepEqual(box.run(), { status: 0, lines: [...every('unchanged'), ...remaining] });
 	assert.deepEqual(box.snapshot(), before);
-});
-
-test('the settings merge adds the missing rule and keeps every other byte', (t) => {
-	const box = sandbox(t, { files: { '.claude/settings.json': agentsStyle } });
-	assert.ok(box.run().lines.includes('updated .claude/settings.json'));
-	const expected = agentsStyle.replace('"Bash(gh pr merge:*)"\n', '"Bash(gh pr merge:*)",\n      "mcp__github__merge_pull_request"\n');
-	assert.equal(box.file('.claude/settings.json').toString(), expected);
-	assert.ok(box.run().lines.includes('unchanged .claude/settings.json'));
-});
-
-test('the settings merge adds a missing permissions block at the end', (t) => {
-	const box = sandbox(t, { files: { '.claude/settings.json': '{\n\t"model": "opus"\n}' } });
-	box.run();
-	assert.equal(
-		box.file('.claude/settings.json').toString(),
-		'{\n\t"model": "opus",\n\t"permissions": {\n\t\t"ask": [\n\t\t\t"Bash(gh pr merge:*)",\n\t\t\t"mcp__github__merge_pull_request"\n\t\t]\n\t}\n}',
-	);
-});
-
-test('a settings file the merge cannot rewrite safely is left as is', async (t) => {
-	const cases = {
-		'{ "permissions": { "ask": [] } }\n': 'skipped .claude/settings.json: has formatting a rewrite would change; left as is',
-		'{\n  "permissions": {\n    "ask": "Bash(*)"\n  }\n}\n': 'skipped .claude/settings.json: permissions.ask is not a list; left as is',
-		'[]\n': 'skipped .claude/settings.json: the top level is not an object; left as is',
-		'{ "permissions": \n': 'skipped .claude/settings.json: is not valid JSON; left as is',
-	};
-	for (const [content, line] of Object.entries(cases)) {
-		await t.test(line, (t) => {
-			const box = sandbox(t, { files: { '.claude/settings.json': content } });
-			const { status, lines } = box.run();
-			assert.equal(status, 0);
-			assert.ok(lines.includes(line), lines.join('\n'));
-			assert.equal(box.file('.claude/settings.json').toString(), content);
-		});
-	}
 });
 
 const repoOwners = ['/firestore.rules @catati-ops', '/docs/adr/ @catati-ops', ''].join('\n');
@@ -225,7 +170,6 @@ test('a managed directory that is a symlink out of the repo is skipped, and noth
 		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/CODEOWNERS', '.github/pull_request_template.md', '.github/workflows/pr-format.yml'],
 		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
 		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
-		'.claude': ['.claude/settings.json'],
 	};
 	for (const [dir, skipped] of Object.entries(cases)) {
 		await t.test(dir, (t) => {
@@ -258,28 +202,28 @@ test('a managed directory that is a symlink to another place in the repo is skip
 
 test('a dangling symlinked directory is skipped', (t) => {
 	const box = sandbox(t);
-	symlinkSync(join(box.outside, 'gone'), join(box.root, '.claude'));
+	symlinkSync(join(box.outside, 'gone'), join(box.root, '.githooks'));
 	const result = box.run();
 	assert.equal(result.status, 0);
-	assert.deepEqual(skips(result), ['skipped .claude/settings.json: resolves outside the repo']);
+	assert.deepEqual(skips(result), ['skipped .githooks/pre-commit: resolves outside the repo', 'skipped .githooks/pre-push: resolves outside the repo']);
 	assert.equal(existsSync(join(box.outside, 'gone')), false);
 });
 
 test('a run that skips a file ends with one line on stderr and exits with 0', async (t) => {
 	for (const args of [[], ['--dry-run']]) {
 		await t.test(args.join(' ') || 'a real run', (t) => {
-			const box = sandbox(t, { files: { '.claude/settings.json': '[]\n' } });
+			const box = sandbox(t);
 			symlinkSync(box.outside, join(box.root, '.githooks'));
 			const result = box.run(...args);
 			assert.equal(result.status, 0);
-			assert.equal(skips(result).length, 3);
-			assert.deepEqual(result.errors, ['catati: setup skipped 3 file(s); the standard is not fully applied']);
+			assert.equal(skips(result).length, 2);
+			assert.deepEqual(result.errors, ['catati: setup skipped 2 file(s); the standard is not fully applied']);
 		});
 	}
 });
 
 test('--dry-run prints what a run would do and writes nothing', (t) => {
-	const box = sandbox(t, { files: { '.claude/settings.json': agentsStyle, '.node-version': '22\n' } });
+	const box = sandbox(t, { files: { '.node-version': '22\n' } });
 	const before = box.treeHash();
 	const dry = box.run('--dry-run');
 	assert.equal(box.treeHash(), before);
