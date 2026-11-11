@@ -2,7 +2,7 @@
 
 Every Catati repo builds, tests and deploys to Cloudflare the same way. Names that carry an environment are in [naming.md](naming.md).
 
-Each rule names its check. `judgment` means a reviewer checks it. `catati check` will take over the rules a file can show.
+Each rule names its check. `catati check` means `make verify` fails when it breaks. `judgment` means a reviewer checks it.
 
 ## Environments
 
@@ -21,7 +21,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 
 | Rule | Check |
 | --- | --- |
-| The only environments are `dev` and `prod`. No `staging` or `preview` environment exists. | judgment |
+| The only environments are `dev` and `prod`. No `staging` or `preview` environment exists. | `catati check` for Wrangler `env` keys, GitHub environments, Terraform roots and env config file names |
 | A PR preview, when added, runs in `dev` on dev data. | judgment |
 | The prod account holds prod resources only. | judgment |
 | The domain `catati.nz` is held for a dev root domain. | judgment |
@@ -58,10 +58,10 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 
 | Rule | Check |
 | --- | --- |
-| Every `wrangler.jsonc` has `env.dev` and `env.prod`. Each sets `name` and the `account_id` of its account. The top level holds only shared keys. | judgment |
-| Every Wrangler command passes `--env`. | judgment |
+| Every `wrangler.jsonc` has `env.dev` and `env.prod`. Each sets `name` and the `account_id` of its account. The top level holds only shared keys. | `catati check`. Which account each `account_id` names, and the top-level keys, need judgment. |
+| Every Wrangler command passes `--env`. | `catati check` for remote commands in `package.json` scripts, `Makefile`s and `builds.json`. Workflow steps need judgment. |
 | Terraform owns long-lived resources: D1, R2, queues and Turnstile. `wrangler.jsonc` owns Workers, bindings, vars, routes, crons, queue consumers and Workflows. `builds.json` owns Workers Builds triggers, one file per account. The dashboard holds secret values only. | judgment |
-| Plain vars live only in `wrangler.jsonc`. No Wrangler command passes `--keep-vars`. | judgment |
+| Plain vars live only in `wrangler.jsonc`. No Wrangler command passes `--keep-vars`. | `catati check` for `--keep-vars`. Where plain vars live needs judgment. |
 | Each Worker lists its secret names in its deploy doc. A secret value never enters a repo, a log or a PR. | judgment |
 | A prod token lives only in GitHub environment `prod` (deploys from `main` only) or `plan-prod` (read-only). Never in a repository secret or a cloud environment. | judgment |
 | Each token reaches one account with the fewest permissions. A Workers token names the Workers it may edit, except where Cloudflare needs product scope: to create a Worker or change a Custom Domain. | judgment |
