@@ -14,13 +14,11 @@ These facts apply to every Catati repo: where each test layer runs, and what onl
 
 | Rule | Check |
 | --- | --- |
-| Agents do not test production. Production runs the same code as dev. | judgment |
-| Agents never create a production account or send real email. | judgment |
 | Dev and production differ only by configuration, meaning bindings and secrets. They never take different code paths. | judgment |
 
 ## Production-only seams
 
-Only production exercises these seams, so no agent test reaches them.
+Only production exercises these seams.
 
 | Seam | What dev uses instead |
 | --- | --- |

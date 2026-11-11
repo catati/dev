@@ -40,11 +40,10 @@ Exit code 2 means setup could not run. Stop and report its stderr line.
 
 ## 4. `CLAUDE.md`
 
-Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep every repo-specific rule. Change only what these three items need.
+Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep every repo-specific rule. Change only what these two items need.
 
-1. **The pstack line.** One line reads "Build with `/pstack:poteto-mode`." and nothing more. Delete any list of overrides after it, such as "This file wins over poteto on …". `CLAUDE.md` already wins over a skill's defaults, and the repo's own rules state each override.
-2. **The conventions link.** The file links to `https://github.com/catati/dev/tree/main/conventions` as the shared rules.
-3. **The rule table.** The table lists only rules that hold in this repo alone; the conventions link covers the shared ones. Delete any row, or prose copy, that restates a rule in `node_modules/@catati/dev/conventions/`. When `CLAUDE.md` has no rule table, create one with the columns `Rule` and `Enforced by`. The table pairs each remaining rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati check` as the enforcer only when `make verify` runs it. State each rule once: when the table holds a rule, delete its prose copy elsewhere in the file.
+1. **The conventions link.** The file links to `https://github.com/catati/dev/tree/main/conventions` as the shared rules.
+2. **The rule table.** The table lists only rules that hold in this repo alone; the conventions link covers the shared ones. Delete any row, or prose copy, that restates a rule in `node_modules/@catati/dev/conventions/`. When `CLAUDE.md` has no rule table, create one with the columns `Rule` and `Enforced by`. The table pairs each remaining rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati check` as the enforcer only when `make verify` runs it. State each rule once: when the table holds a rule, delete its prose copy elsewhere in the file.
 
 ## 5. Commit and open the PR
 

@@ -120,16 +120,12 @@ Run it again at any time to bring the repo up to date. A run on a repo that is a
 | `.github/CODEOWNERS` | Adds each line of `templates/CODEOWNERS` that the file lacks, at the end and in template order. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
-| `.claude/settings.json` | Adds each entry of `templates/claude-settings.json` that the file lacks. The template asks before `gh pr merge` and before the GitHub MCP merge tool. |
 
 It prints one line per file, as `created <path>`, `updated <path>` or `unchanged <path>`.
 It also deletes each file it used to manage and no longer does, `.github/pull_request_template.md` and `.github/workflows/pr-format.yml`, and prints `removed <path>` for each one it finds. A second run finds none and prints nothing for them. It skips such a path when it is not a regular file or sits under a symlinked directory.
 A copy replaces the whole file when one byte differs, and keeps the file's mode.
 The CODEOWNERS merge keeps every line the repo already has, so a repo can add its own owner rules.
-The settings merge keeps every key the repo already has, and adds new list entries at the end of the list.
-If a merge cannot keep the file's own bytes, it prints `skipped <path>: <reason>` and leaves the file as is.
-An example is a file that a JSON rewrite would reformat, or a `permissions.ask` that is not a list.
-It also skips a managed path that is not a regular file, such as a symlink.
+It prints `skipped <path>: <reason>` and leaves the file as is when it skips a managed path that is not a regular file, such as a symlink.
 It skips a managed path whose parent directory, such as `.github`, is a symlink. If the link leads out of the repo, the line reads `skipped <path>: resolves outside the repo`.
 A link that stays in the repo is skipped too. Git commits the link, not the files behind it, so the files would land at a path the standard does not name.
 
@@ -172,7 +168,7 @@ The repo's own `.git/config` still applies, so the diff itself sets every option
 | `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
 | `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. These count only at the root, so a `firestore.rules` in a subfolder is not a match. |
 | `**/migrations/**` | Data migrations. |
-| `templates/claude-settings.json`, `templates/githooks/**`, `templates/CODEOWNERS` | `catati setup` copies these into the settings, Git hooks and code owners of every repo. |
+| `templates/githooks/**`, `templates/CODEOWNERS` | `catati setup` copies these into the Git hooks and code owners of every repo. |
 | `bin/catati.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test follows the `check-merge` entry of the command table and fails when it loads a module outside this list, or when any module it loads has an `import()` whose target is not a literal. |
 
 A changed path that holds a control character (U+0000 to U+001F or U+007F) or a line or paragraph separator (U+2028, U+2029) is a match whatever its name. No real file needs such a name, and the gate cannot be sure what a tool downstream makes of it. The gate prints that path with each such character as `\uXXXX`.
@@ -198,7 +194,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 
 | Part | What it does |
 | --- | --- |
-| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` line "Build with `/pstack:poteto-mode`.", the conventions link and the rule table, then opens one PR per pstack's Opening a PR. Run it again after each `catati/dev` release. |
+| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` conventions link and the rule table, then opens one PR per pstack's Opening a PR. Run it again after each `catati/dev` release. |
 | SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.

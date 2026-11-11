@@ -110,7 +110,6 @@ const doorExamples = [
 	'storage.rules',
 	'migrations/0001_init.sql',
 	'functions/db/migrations/0002.sql',
-	'templates/claude-settings.json',
 	'templates/githooks/pre-push',
 	'templates/CODEOWNERS',
 	'bin/catati.mjs',
