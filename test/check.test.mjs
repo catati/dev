@@ -614,3 +614,33 @@ test('wrangler-envs keeps $(...) in its word, reads backslash escapes, and reads
 		],
 	});
 });
+
+test('wrangler-envs checks the command inside $(...) and backticks, and skips a substitution that may hold --env', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		Makefile: `${cleanMakefile}deploy-dev:\n\twrangler deploy $(shell cat args)\n\twrangler deploy $(if $(CI),--env dev)\n`,
+		'package.json': scripts('wrangler deploy $(cat args)', 'echo "$(date) wrangler deploy"'),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'package.json': scripts(
+			'ID=$(wrangler versions upload | tail -1)',
+			'X=`wrangler rollback`',
+			"bash -o pipefail -c 'wrangler secret put K'",
+			"/usr/bin/env bash -c 'wrangler triggers deploy'",
+			'wrangler deploy --var V:$(cat v | sed -e s/x/y/)',
+		),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler versions runs without --env: wrangler versions upload',
+			'wrangler-envs: package.json: wrangler rollback runs without --env: wrangler rollback',
+			'wrangler-envs: package.json: wrangler secret runs without --env: wrangler secret put K',
+			'wrangler-envs: package.json: wrangler triggers runs without --env: wrangler triggers deploy',
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy --var V:$()',
+		],
+	});
+});
