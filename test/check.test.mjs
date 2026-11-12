@@ -511,3 +511,150 @@ test('wrangler-envs skips a bare variable after a flag that takes no value', (t)
 	const makefile = [cleanMakefile, 'deploy-dev:', '\twrangler deploy $(ENV_ARGS)', '\twrangler d1 migrations apply DB --remote $$ENV_ARGS', ''].join('\n');
 	assert.deepEqual(runCheck({ ...cleanRepo(), Makefile: makefile }, t), { status: 0, lines: [] });
 });
+
+test('wrangler-envs reads quotes and shell -c, so a quoted separator is text and the inner command is checked', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		'package.json': scripts('echo "a; wrangler deploy --x"', "printf 'b && wrangler deploy\\n'", "sh -c 'wrangler deploy --env dev'"),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = { ...clean, 'package.json': scripts('sh -c "wrangler deploy"', "bash -c 'cd api && wrangler versions upload'") };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy',
+			'wrangler-envs: package.json: wrangler versions runs without --env: wrangler versions upload',
+		],
+	});
+});
+
+test('wrangler-envs covers tail, pages deploy, and kv and r2 with --remote, and reads d1 migrations apply --local as local', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		'package.json': scripts(
+			'wrangler tail --env dev',
+			'wrangler pages deploy dist --branch main',
+			'wrangler kv key put k v --local',
+			'wrangler r2 object put b/k --remote --env dev',
+			'wrangler d1 migrations apply DB --local',
+		),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'package.json': scripts('wrangler tail', 'wrangler pages deploy dist', 'wrangler kv key put k v --remote', 'wrangler r2 object get b/k --remote'),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler tail runs without --env: wrangler tail',
+			'wrangler-envs: package.json: wrangler pages deploy runs without --branch: wrangler pages deploy dist',
+			'wrangler-envs: package.json: wrangler kv runs without --env: wrangler kv key put k v --remote',
+			'wrangler-envs: package.json: wrangler r2 runs without --env: wrangler r2 object get b/k --remote',
+		],
+	});
+});
+
+test('env-names flags .env.<env>.local and qa, and skips Terraform modules and a preview component', (t) => {
+	const clean = {
+		...cleanRepo(),
+		'infra/modules/preview/main.tf': '',
+		'web/card.preview.json': '{}',
+		'.env.dev.local': '',
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = { ...clean, '.env.production.local': '', 'api/config.qa.yaml': '', 'infra/qa/main.tf': '' };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'env-names: .env.production.local: path names environment production; use dev or prod',
+			'env-names: api/config.qa.yaml: path names environment qa; use dev or prod',
+			'env-names: infra/qa: path names environment qa; use dev or prod',
+		],
+	});
+});
+
+test('workflow-names skips a workflow in a subfolder, which GitHub ignores', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/shared/apply-dev.yml': 'on: push\n' }, t), { status: 0, lines: [] });
+});
+
+test('a JSON file carries its allow line in a string value', (t) => {
+	const files = {
+		...cleanRepo(),
+		'package.json': JSON.stringify(
+			{ '//': 'catati-allow(wrangler-envs): legacy deploy; expires 2999-01-01', scripts: { deploy: 'wrangler deploy' } },
+			null,
+			2,
+		),
+	};
+	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
+});
+
+test('wrangler-envs keeps $(...) in its word, reads backslash escapes, and reads every shell -c form', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		Makefile: `${cleanMakefile}deploy-dev:\n\twrangler deploy --var SHA:$(shell git rev-parse HEAD) --env dev\n\twrangler deploy --var V:$$(git rev-parse HEAD) --env dev\n`,
+		'package.json': scripts('wrangler deploy --var V:$(git rev-parse HEAD) --env dev', 'echo "a \\" ; wrangler deploy"', 'wrangler tail repo-api'),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'package.json': scripts('echo \\"a; wrangler deploy', "bash -lc 'wrangler versions upload'", "/bin/sh -e -c 'wrangler rollback'", "sh -c 'wrangler triggers deploy"),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy',
+			'wrangler-envs: package.json: wrangler versions runs without --env: wrangler versions upload',
+			'wrangler-envs: package.json: wrangler rollback runs without --env: wrangler rollback',
+			'wrangler-envs: package.json: wrangler triggers runs without --env: wrangler triggers deploy',
+		],
+	});
+});
+
+test('wrangler-envs checks the command inside $(...) and backticks, and skips a substitution that may hold --env', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		Makefile: `${cleanMakefile}deploy-dev:\n\twrangler deploy $(shell cat args)\n\twrangler deploy $(if $(CI),--env dev)\n`,
+		'package.json': scripts('wrangler deploy $(cat args)', 'echo "$(date) wrangler deploy"'),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'package.json': scripts(
+			'ID=$(wrangler versions upload | tail -1)',
+			'X=`wrangler rollback`',
+			"bash -o pipefail -c 'wrangler secret put K'",
+			"/usr/bin/env bash -c 'wrangler triggers deploy'",
+			'wrangler deploy --var V:$(cat v | sed -e s/x/y/)',
+		),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler versions runs without --env: wrangler versions upload',
+			'wrangler-envs: package.json: wrangler rollback runs without --env: wrangler rollback',
+			'wrangler-envs: package.json: wrangler secret runs without --env: wrangler secret put K',
+			'wrangler-envs: package.json: wrangler triggers runs without --env: wrangler triggers deploy',
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy --var V:$()',
+		],
+	});
+});
+
+test('wrangler-envs reads & in a redirect as text, and env-names flags wrangler.preview config', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = { ...cleanRepo(), 'package.json': scripts('wrangler deploy 2>&1 --env dev', 'wrangler deploy &>deploy.log --env dev', 'wrangler deploy >&2 --env dev') };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = { ...clean, 'package.json': scripts('wrangler deploy --env dev & wrangler deploy'), 'api/wrangler.preview.jsonc': '{}' };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'env-names: api/wrangler.preview.jsonc: path names environment preview; use dev or prod',
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy',
+		],
+	});
+});
