@@ -87,8 +87,5 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | --- | --- | --- |
 | The prod account label `catati` | The prod account is `catati-prod`. | The operator renames the label. |
 | `cat-hotel` prod frontends `catati-cat-hotel-*`, their top-level prod config and Workers Builds triggers | `env.prod`; `deploy-prod` is the only path | The `cat-hotel` cutover (#196, #248). |
-| `cat-hotel` `release.yml`, which deploys Firebase prod on each merge, and its `production` GitHub environment | `deploy.yml`; only the prod release column changes prod; `dev` and `prod` only | Firebase is removed (#198). |
 | `catati-brand-guide` deploys `main` straight to prod | `deploy-prod` is the only path | `brand-guide` adds `deploy-prod`. |
 | Catsper and old `cat-hotel` dev resources in the prod account | The prod account holds prod resources only. | They move to `catati-dev` or are deleted. |
-| No `wrangler.jsonc` in `cat-hotel` sets `account_id` | Each env sets `account_id`. | `cat-hotel` adds it to each env. |
-| `terraform` repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_BUILDS_TOKEN` | Tokens live in GitHub environment `dev` | `terraform` adds a `dev` GitHub environment. |

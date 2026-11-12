@@ -75,8 +75,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | Shopify stores `catati-dev-store` and `3dd4ee` | `<repo>-<env>` | No end date. Shopify fixes store domains. |
 | `cat-hotel` prod Workers `catati-cat-hotel-*` | `<repo>-<component>` | The `cat-hotel` frontend rename (#248). |
 | `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod` after the cutover. |
-| `terraform` GitHub environment `prod-plan` and secret `CATATI_API_TOKEN` in `prod` | env last; secret names | The operator deletes them. Nothing uses them since `terraform` #5. |
 | `cat-hotel` admin host `admin.catati.co.nz` | Prod hosts are `<component>.<prod domain>`. | Admin moves to `admin.cathotel.nz` at the cutover. |
 | Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. |
-| GitHub environments `development` in `cat-hotel` and `catsper`, and `production` in `catsper` | `dev` and `prod` only | Each repo renames it. |
+| GitHub environments `production` in `cat-hotel`, and `development` and `production` in `catsper` | `dev` and `prod` only | `cat-hotel` renames `production` to `prod` with its `deploy-prod` job; `catsper` renames its own. |
 | Catsper stem `catati-catsper` | The repo name is the stem. | Catsper renames its resources. |
