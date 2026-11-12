@@ -12,6 +12,8 @@ Each field of the environment form has one source here. Change the file, not the
 | Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank values in the form. Dev values only: every user of the environment can read them. |
 | Setup script | Paste [env/setup.sh](env/setup.sh) |
 
+Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and `*.`. When a zone is added there, add it to the list and to `catatiZones` in [test/network-allowlist.test.mjs](test/network-allowlist.test.mjs).
+
 ## Conventions
 
 `conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` and `catati session-start` write.

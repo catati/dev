@@ -20,3 +20,13 @@ release-assets.githubusercontent.com
 theme-kit-access.shopifyapps.com
 api.xero.com
 identity.xero.com
+catati.co.nz
+*.catati.co.nz
+catati.nz
+*.catati.nz
+cathotel.nz
+*.cathotel.nz
+catshop.nz
+*.catshop.nz
+catsper.app
+*.catsper.app
