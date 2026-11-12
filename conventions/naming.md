@@ -74,11 +74,11 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | Repo `catati-horizon` | The repo name is the stem. | The Horizon spike reports. |
 | Shopify stores `catati-dev-store` and `3dd4ee` | `<repo>-<env>` | No end date. Shopify fixes store domains. |
 | `cat-hotel` prod Workers `catati-cat-hotel-*` | `<repo>-<component>` | The `cat-hotel` frontend rename (#248). |
-| `cat-hotel` `shopify.app.production.toml`, Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel`, script `check:dev-env` | `dev` and `prod` only; `<repo>-<env>` | `cat-hotel` renames them. |
+| `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod` after the cutover. |
+| `cat-hotel` api script alias `check:dev-env` | A script that checks both envs has no env in its name. | `terraform` points the dev api build at `check:env`. |
 | `terraform` workflows `plan.yml`, `apply-dev.yml` and `apply-prod.yml`, GitHub environment `prod-plan`, checks `cat-hotel-dev/plan` and secret `CATATI_API_TOKEN` | `ci.yml` and `deploy.yml`; env last; secret names | `terraform` renames them. |
 | `cat-hotel` admin host `admin.catati.co.nz` | Prod hosts are `<component>.<prod domain>`. | Admin moves to `admin.cathotel.nz` at the cutover. |
 | Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. |
 | `terraform` Workers Builds triggers "Deploy main to dev", and checks `cat-hotel-dev/apply`, `cat-hotel-prod/plan` and `cat-hotel-prod/apply` | A deploy job is `<action>-<env>`. | `terraform` renames them. |
 | GitHub environments `development` in `cat-hotel` and `catsper`, and `production` in `catsper` | `dev` and `prod` only | Each repo renames it. |
 | Catsper stem `catati-catsper` | The repo name is the stem. | Catsper renames its resources. |
-| `cat-hotel` CI checks `<package>/verify` and `tooling/changes` | `<package>-verify`; `changes` | `cat-hotel` renames its checks and its required-check list. |
