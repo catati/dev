@@ -16,7 +16,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 | Data | A copy of active prod data, which may be reset | Customer data, restored with D1 Time Travel |
 | Workers reach it by | A merge to `main`, through Workers Builds | The operator runs the `deploy-prod` job |
 | Terraform reaches it by | A merge to `main` runs `apply-dev` | A merge to `main` runs `apply-prod` |
-| Agents may | Plan, apply, deploy, migrate and reset | Read only |
+| Agents may | Plan, apply, deploy, migrate and reset | Read. Write only under the rule in [Who changes prod](#who-changes-prod). |
 | Tokens live in | GitHub environment `dev`, and the `catati-dev` cloud environment | GitHub environments `prod` and `plan-prod` |
 
 | Rule | Check |
@@ -78,8 +78,10 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 
 | Rule | Check |
 | --- | --- |
-| Agents never write to prod. | The repo's prod guard hook |
-| Only the operator merges a PR that changes a prod Terraform root or `.github/workflows/`. | judgment |
+| An agent changes prod only when both gates hold. 1) The operator asks for that specific prod action. 2) It runs on the operator's machine (Remote Control, the local CLIs and logins) or through the operator's connectors, never from a cloud environment, which has no prod access. Without that ask, agents do not change prod. | judgment |
+| Where this page says the operator runs or merges something, an agent may do it when both gates hold. | judgment |
+| The prod guard hook asks for approval on every prod write, in every session. Prod reads pass with no prompt. | The repo's prod guard hook |
+| A merge of a PR that changes a prod Terraform root or `.github/workflows/` is a prod action, because the merge applies prod. | judgment |
 
 ## Exceptions
 
