@@ -644,3 +644,17 @@ test('wrangler-envs checks the command inside $(...) and backticks, and skips a 
 		],
 	});
 });
+
+test('wrangler-envs reads & in a redirect as text, and env-names flags wrangler.preview config', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = { ...cleanRepo(), 'package.json': scripts('wrangler deploy 2>&1 --env dev', 'wrangler deploy &>deploy.log --env dev', 'wrangler deploy >&2 --env dev') };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = { ...clean, 'package.json': scripts('wrangler deploy --env dev & wrangler deploy'), 'api/wrangler.preview.jsonc': '{}' };
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'env-names: api/wrangler.preview.jsonc: path names environment preview; use dev or prod',
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy',
+		],
+	});
+});
