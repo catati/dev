@@ -591,3 +591,26 @@ test('a JSON file carries its allow line in a string value', (t) => {
 	};
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 });
+
+test('wrangler-envs keeps $(...) in its word, reads backslash escapes, and reads every shell -c form', (t) => {
+	const scripts = (...commands) => JSON.stringify({ scripts: Object.fromEntries(commands.map((c, i) => [`s${i}`, c])) });
+	const clean = {
+		...cleanRepo(),
+		Makefile: `${cleanMakefile}deploy-dev:\n\twrangler deploy --var SHA:$(shell git rev-parse HEAD) --env dev\n\twrangler deploy --var V:$$(git rev-parse HEAD) --env dev\n`,
+		'package.json': scripts('wrangler deploy --var V:$(git rev-parse HEAD) --env dev', 'echo "a \\" ; wrangler deploy"', 'wrangler tail repo-api'),
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'package.json': scripts('echo \\"a; wrangler deploy', "bash -lc 'wrangler versions upload'", "/bin/sh -e -c 'wrangler rollback'", "sh -c 'wrangler triggers deploy"),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy',
+			'wrangler-envs: package.json: wrangler versions runs without --env: wrangler versions upload',
+			'wrangler-envs: package.json: wrangler rollback runs without --env: wrangler rollback',
+			'wrangler-envs: package.json: wrangler triggers runs without --env: wrangler triggers deploy',
+		],
+	});
+});
