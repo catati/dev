@@ -74,7 +74,9 @@ To accept a finding for a time, add this line to the file that has the finding:
 The line turns off that check for every finding in the file that holds it, until the end of the date.
 It covers the whole file, not one line, because some findings have no line of their own. A missing `Makefile` target is an example.
 
-A file that cannot hold a comment, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check.
+A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD"` in `package.json`.
+
+A file that cannot hold a comment or a string, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check.
 A line in `.catati-allow` turns off its check for the whole repo.
 
 An expired or malformed allow line is a finding with the check `allow`.
