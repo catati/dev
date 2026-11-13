@@ -16,7 +16,7 @@ Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Ca
 
 ## Conventions
 
-`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` and `catati session-start` write.
+`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` writes.
 Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
@@ -90,7 +90,7 @@ The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs 
 `catati session-start` sets up a session in the git repo that holds the current directory:
 
 1. If the repo has a `.githooks` folder and `core.hooksPath` is unset, it sets `git config core.hooksPath .githooks`. If `core.hooksPath` already names another folder, such as `.husky`, it keeps that value and prints a warning.
-2. If `~/.claude/rules/pstack-models.md` is missing, it copies `templates/pstack-models.md` there. It never replaces a rule you already have.
+2. If `~/.claude/rules/pstack-models.md` is missing, it copies `plugins/catati/rules/pstack-models.md` there. It never replaces a rule you already have.
 3. It checks that `node` is 24.15 or later. If `package.json` has `packageManager: pnpm@<version>`, it checks that `corepack pnpm --version` prints that version.
    The first run in a repo can download that pnpm version through corepack, about 1.5 s on a cold cache. The download fills the cache the repo's install step needs.
    Each check stops after 3 s, so a session with no network starts with a `timed out` warning instead of a long wait.
@@ -117,7 +117,9 @@ To run it in every session of a repo, add this entry to the repo's `.claude/sett
 The entry calls the installed binary directly. `npx --no-install catati` asks the npm registry for `catati` when the package is not installed.
 A fresh clone has no `node_modules`, so the hook prints `not found` until the repo installs. To set up a fresh clone, also run `node_modules/.bin/catati session-start` as the last step of `make install`.
 
-A session whose primary directory is not a repo runs no repo's SessionStart hook. For those sessions, [env/setup.sh](env/setup.sh) writes the same rule before Claude starts, with the same "only when missing" test. `npm test` fails when the copy in `env/setup.sh` differs from `templates/pstack-models.md`.
+A session whose primary directory is not a repo runs no repo's SessionStart hook. For those sessions, [env/setup.sh](env/setup.sh) writes the same rule before Claude starts, with the same "only when missing" test. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
+
+The `catati` plugin runs steps 1 and 2 in every session, so a repo needs no SessionStart entry of its own (see [Use the `catati` plugin](#use-the-catati-plugin)).
 
 ## Run `catati setup` to set a repo up to the standard
 
@@ -169,6 +171,7 @@ The repo's own `.git/config` still applies, so the diff itself sets every option
 | `.claude/settings.json` | The permission prompts and sandbox rules of every session in the repo. |
 | `.githooks/**` | Git hooks run on every developer machine and can skip the local guards. |
 | `.claude/hooks/**` | Claude Code hooks run on every session. |
+| `plugins/*/hooks/**` | A plugin's Claude Code hooks, the prod guard among them, run in every session that syncs the plugin. |
 | `.gitmodules` | Where each submodule is fetched from. |
 | `**/.npmrc` | The registry that installs, deploys included, fetch packages from. |
 | `env/setup.sh` | The setup script of every cloud session. |
@@ -205,7 +208,15 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 | Part | What it does |
 | --- | --- |
 | `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` conventions link and the rule table, then opens one PR per pstack's Opening a PR. Run it again after each `catati/dev` release. |
-| SessionStart hook | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
+| SessionStart hook `probe.sh` | Writes `~/.claude/catati-plugin-hook-ran`. It is a probe, and does nothing else. |
+| SessionStart hook `session-start.mjs` | Runs steps 1 and 2 of `catati session-start` for each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the cwd), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
+| PreToolUse hook `pre-tool-use.mjs` | Runs the prod guard (`guard-prod.mjs`) and the ask rules (`ask-rules.mjs`) on `Bash`, the file-edit tools, `mcp__cloudflare__execute`, the Shopify connector and the GitHub merge tools, and returns one decision: deny over ask over pass. When either check throws, it asks, because Claude Code lets a call run when a hook fails. |
+
+Repo `.claude/settings.json` files load only when a session starts in that repo, so a project thread that starts one folder up never runs them ([settings](https://code.claude.com/docs/en/settings#settings-files)). Plugin hooks load in every session that syncs the plugin ([hooks](https://code.claude.com/docs/en/hooks)). That is why the guards live here, not in each repo.
+
+`guard-prod.mjs` asks for approval on every prod write and gates merges on a verifier record; cat-hotel `CLAUDE.md` states its rules. It allows one reviewed prod read: the overbooked nights report call whose SQL has the sha256 `OVERBOOKED_NIGHTS_SQL_SHA256`. cat-hotel's report script holds the same pin, and a cat-hotel tooling test fails unless both pins equal the sha256 of the committed SQL. So a change to the SQL needs a new pin here first, then the same pin and a re-pin of `@catati/dev` in cat-hotel.
+
+`ask-rules.mjs` holds `ASK_RULES`, in the syntax of `permissions.ask` in `settings.json`. A `Bash(...)` rule matches the whole command, any segment of it, and any command inside `$(…)` or backticks, with `*` matching any text. Before matching a segment it drops leading `NAME=value` assignments, the keywords `do`, `then`, `else`, `elif`, `if`, `while`, `until`, `!` and `{`, and the wrappers `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, `noglob` and `xargs` with their options, as Claude Code's own permission rules do ([permissions](https://code.claude.com/docs/en/permissions)). An `Edit(...)` rule covers `Edit`, `MultiEdit`, `Write` and `NotebookEdit`: `/.claude/settings.json` matches that file in any folder, and `~/` is the home folder.
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
 
