@@ -70,6 +70,8 @@ const doorExamples = [
 	'.claude/settings.json',
 	'.githooks/pre-push',
 	'.claude/hooks/git-hooks.sh',
+	'plugins/catati/hooks/guard-prod.mjs',
+	'plugins/catati/hooks/hooks.json',
 	'.gitmodules',
 	'.npmrc',
 	'web/.npmrc',

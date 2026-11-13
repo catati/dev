@@ -11,7 +11,7 @@ set -euo pipefail
 # Claude loads ~/.claude/rules/ at start. A session whose primary directory is not a repo
 # runs no repo's SessionStart hook, so this is the one step that reaches every session.
 # It runs first so the rule lands even when a later step fails. A rule the user already has wins.
-# Keep the text equal to templates/pstack-models.md; npm test fails when they differ.
+# Keep the text equal to plugins/catati/rules/pstack-models.md; npm test fails when they differ.
 rules_dir="${HOME:-/root}/.claude/rules"
 if [ ! -e "$rules_dir/pstack-models.md" ]; then
   mkdir -p "$rules_dir"

@@ -43,10 +43,55 @@ test('each skill names its own folder and has a description', () => {
 	}
 });
 
-test('the SessionStart hook runs the probe from the plugin root', () => {
-	const hooks = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
-	const commands = hooks.hooks.SessionStart.flatMap((group) => group.hooks.map((hook) => hook.command));
-	assert.deepEqual(commands, ['"${CLAUDE_PLUGIN_ROOT}/hooks/probe.sh"']);
+const hooks = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8')).hooks;
+const commandsOf = (event) => hooks[event].flatMap((group) => group.hooks.map((hook) => hook.command));
+
+test('the SessionStart hooks run the probe and the session setup from the plugin root', () => {
+	assert.deepEqual(commandsOf('SessionStart'), ['"${CLAUDE_PLUGIN_ROOT}/hooks/probe.sh"', 'node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"']);
+});
+
+test('one PreToolUse hook runs the prod guard and the ask rules for every tool they judge', () => {
+	assert.equal(hooks.PreToolUse.length, 1);
+	assert.deepEqual(commandsOf('PreToolUse'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use.mjs"']);
+	const matcher = new RegExp(`^(?:${hooks.PreToolUse[0].matcher})$`);
+	for (const tool of ['Bash', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'mcp__cloudflare__execute', 'mcp__Shopify__graphql_mutation', 'mcp__github__merge_pull_request', 'mcp__github__enable_pr_auto_merge'])
+		assert.match(tool, matcher);
+	for (const tool of ['Read', 'Grep', 'mcp__github__get_file_contents']) assert.doesNotMatch(tool, matcher);
+});
+
+test('every hook module imports only files inside the plugin, because a synced plugin holds only its own folder', () => {
+	const dir = join(pluginRoot, 'hooks');
+	for (const name of readdirSync(dir).filter((file) => file.endsWith('.mjs'))) {
+		const source = readFileSync(join(dir, name), 'utf8');
+		for (const [, target] of source.matchAll(/^import [^'"]*['"]([^'"]+)['"]/gm)) {
+			if (target.startsWith('node:')) continue;
+			const resolved = new URL(target, `file://${join(dir, name)}`).pathname;
+			assert.ok(resolved.startsWith(`${pluginRoot}/`), `${name} imports ${target}`);
+			assert.ok(existsSync(resolved), `${name} imports missing ${target}`);
+		}
+	}
+});
+
+test('the PreToolUse command, run as Claude Code runs it, asks for a Wrangler deploy with no env from a folder that is no repo', (t) => {
+	const parent = mkdtempSync(join(tmpdir(), 'catati-pre-tool-'));
+	t.after(() => rmSync(parent, { recursive: true, force: true }));
+	const [command] = commandsOf('PreToolUse');
+	const run = (tool_name, tool_input) => {
+		const result = spawnSync('sh', ['-c', command], {
+			cwd: parent,
+			input: JSON.stringify({ tool_name, tool_input, cwd: parent }),
+			encoding: 'utf8',
+			env: { PATH: process.env.PATH, HOME: parent, CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PROJECT_DIR: parent },
+		});
+		assert.equal(result.status, 0, result.stderr);
+		return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : null;
+	};
+	const asked = run('Bash', { command: 'wrangler deploy --config /nonexistent/wrangler.jsonc' });
+	assert.equal(asked.hookEventName, 'PreToolUse');
+	assert.equal(asked.permissionDecision, 'ask');
+	assert.match(asked.permissionDecisionReason, /production Worker/);
+	assert.equal(run('Bash', { command: 'wrangler deploy --env dev' }), null);
+	assert.equal(run('Edit', { file_path: join(parent, 'cat-hotel/.claude/settings.json') }).permissionDecision, 'ask');
 });
 
 test('the probe writes the time, the directory and the project dir, and nothing else', (t) => {

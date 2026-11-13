@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
-const rule = readFileSync(new URL('../templates/pstack-models.md', import.meta.url));
+const rule = readFileSync(new URL('../plugins/catati/rules/pstack-models.md', import.meta.url));
 const setupScript = readFileSync(new URL('../env/setup.sh', import.meta.url), 'utf8');
 
 function sandbox(t, { git = true, githooks = true, files = {} } = {}) {
