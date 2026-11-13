@@ -59,6 +59,11 @@ test('one PreToolUse hook runs the prod guard and the ask rules for every tool t
 	for (const tool of ['Read', 'Grep', 'mcp__github__get_file_contents']) assert.doesNotMatch(tool, matcher);
 });
 
+test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs from the plugin root', () => {
+	for (const event of ['WorktreeCreate', 'WorktreeRemove']) assert.deepEqual(commandsOf(event), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/worktree.mjs"']);
+	assert.deepEqual(Object.keys(hooks).sort(), ['PreToolUse', 'SessionStart', 'WorktreeCreate', 'WorktreeRemove']);
+});
+
 test('every hook module imports only files inside the plugin, because a synced plugin holds only its own folder', () => {
 	const dir = join(pluginRoot, 'hooks');
 	for (const name of readdirSync(dir).filter((file) => file.endsWith('.mjs'))) {
