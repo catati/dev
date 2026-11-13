@@ -5,10 +5,21 @@ import { decide } from './guard-prod.mjs'
 
 const RANK = { deny: 2, ask: 1 }
 
+function guarded(check) {
+  try {
+    return check()
+  } catch (error) {
+    return {
+      decision: 'ask',
+      reason: `The catati guard failed on this call (${error?.message ?? error}), so it needs Shien's approval.`,
+    }
+  }
+}
+
 export function preToolUse(toolName, toolInput, options) {
   const results = [
-    decide(toolName, toolInput, options),
-    askRule(toolName, toolInput, options),
+    guarded(() => decide(toolName, toolInput, options)),
+    guarded(() => askRule(toolName, toolInput, options)),
   ].filter(Boolean)
   if (results.length === 0) return null
   const decision = results

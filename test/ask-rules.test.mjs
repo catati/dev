@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { ASK_RULES, askRule } from '../plugins/catati/hooks/ask-rules.mjs'
+import { ASK_RULES, askRule, globMatches, unwrap } from '../plugins/catati/hooks/ask-rules.mjs'
 import { preToolUse } from '../plugins/catati/hooks/pre-tool-use.mjs'
 
 const bash = (command) => askRule('Bash', { command })?.decision ?? null
@@ -46,6 +46,48 @@ test('every Bash ask rule asks for a command it names, alone or as one segment',
     for (const wrapped of [`cd /work && ${command}`, `true; ${command} | cat`, `FOO=1 ${command}`])
       assert.equal(bash(wrapped), 'ask', `${rule}: ${wrapped}`)
   }
+})
+
+test('a rule sees through the wrappers, keywords and substitutions Claude Code permission rules see through', () => {
+  for (const command of [
+    'timeout 30 gh workflow run deploy.yml',
+    'timeout -s KILL -k 5 30 gh secret set X',
+    'time gh secret list',
+    'nice gh repo edit --visibility public',
+    'nice -n 5 gh secret list',
+    'nohup gh secret set X',
+    'stdbuf -oL gh secret list',
+    'command -p gh secret list',
+    'builtin gh secret list',
+    'noglob gh secret list',
+    'xargs gh secret set',
+    'xargs -n 1 -P 2 gh secret set',
+    'echo "$(gh secret list)"',
+    'echo `gh secret list`',
+    'echo "`timeout 3 gh secret list`"',
+    'for i in 1; do gh secret set X; done',
+    'if true; then gh variable set A; else gh variable set B; fi',
+    'while true; do gh workflow run x; done',
+    '! gh secret list',
+    '{ gh secret list; }',
+    'A=1 B=2 timeout 5 make x ENV=prod',
+  ])
+    assert.equal(bash(command), 'ask', command)
+  assert.equal(unwrap('A=1 nice -n 5 timeout 9 xargs -n 1 gh secret set'), 'gh secret set')
+})
+
+test('glob matching is anchored at both ends and takes linear time on long commands', () => {
+  assert.equal(globMatches('gh secret*', 'gh secret'), true)
+  assert.equal(globMatches('gh secret*', 'xgh secret'), false)
+  assert.equal(globMatches('gh api *-X*contents/*', 'gh api -X PUT repos/a/contents/b'), true)
+  assert.equal(globMatches('gh api *-X*contents/*', 'gh api repos/a/contents/b'), false)
+  assert.equal(globMatches('make *ENV=prod*', 'make ENV=prod'), true)
+  assert.equal(globMatches('make *ENV=prod*', 'make deploy ENV=dev'), false)
+  assert.equal(globMatches('a*a', 'a'), false)
+  const started = performance.now()
+  const long = `gh api /user -f note=${'-X'.repeat(200_000)} ; wrangler deploy --env prod`
+  assert.equal(preToolUse('Bash', { command: long }).decision, 'ask')
+  assert.ok(performance.now() - started < 5000)
 })
 
 test('the ask rules are the 28 rules moved from cat-hotel .claude/settings.json', () => {
@@ -100,6 +142,12 @@ test('one decision comes back when the prod guard and an ask rule both match, an
   assert.equal(both.decision, 'ask')
   assert.match(both.reason, /production/)
   assert.match(both.reason, /make \*ENV=prod\*/)
+  const crashed = preToolUse('mcp__cloudflare__execute', {
+    account_id: '69f8dc2296dd15d29e03693d6492f163',
+    code: { toString: () => { throw new Error('boom') } },
+  })
+  assert.equal(crashed.decision, 'ask')
+  assert.match(crashed.reason, /guard failed/)
   const denied = preToolUse('mcp__github__enable_pr_auto_merge', {})
   assert.equal(denied.decision, 'deny')
   assert.equal(preToolUse('Bash', { command: 'ls' }), null)

@@ -233,6 +233,12 @@ test('Cloudflare: the hook allows exactly the prod report call whose SQL has the
     assert.equal(reportDecision(PROD, code), 'ask', code)
   assert.equal(reportDecision(undefined, report), 'ask')
   assert.equal(reportDecision(DEV, report), 'ask')
+  assert.equal(
+    reportDecision(PROD, [
+      `await cloudflare.request({ method: 'DELETE', path: '/accounts/${PROD}/workers/scripts/cat-hotel-api' })`,
+    ]),
+    'ask'
+  )
 })
 
 const editedReportSql = {

@@ -33,7 +33,7 @@ const reportCall = (sql) =>
 const [REPORT_HEAD, REPORT_TAIL] = reportCall('\0').split(JSON.stringify('\0'))
 
 function isOverbookedNightsProdRead(accountId, code, pin) {
-  if (accountId !== ACCOUNTS.prod) return false
+  if (accountId !== ACCOUNTS.prod || typeof code !== 'string') return false
   if (!code.startsWith(REPORT_HEAD) || !code.endsWith(REPORT_TAIL)) return false
   let sql
   try {
