@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { matchesDoorGlob } from '../lib/check-merge.mjs';
 
@@ -43,13 +44,14 @@ function repo(t) {
 		git('commit', '-q', '-m', 'gitlink');
 		return git('rev-parse', 'HEAD');
 	};
-	const run = (args, cwd = root, extraEnv = {}) => {
-		const { status, stdout, stderr } = spawnSync(process.execPath, [cli, 'check-merge', ...args], { cwd, encoding: 'utf8', env: { ...env, ...extraEnv } });
-		const lines = stdout.split('\n').filter(Boolean);
-		const errors = stderr.split('\n').filter(Boolean);
-		return errors.length > 0 ? { status, lines, errors } : { status, lines };
-	};
+	const run = (args, cwd = root, extraEnv = {}) => outcome(spawnSync(process.execPath, [cli, 'check-merge', ...args], { cwd, encoding: 'utf8', env: { ...env, ...extraEnv } }));
 	return { root, parent, git, commit, link, gitlink, run };
+}
+
+function outcome({ status, stdout, stderr }) {
+	const lines = stdout.split('\n').filter(Boolean);
+	const errors = stderr.split('\n').filter(Boolean);
+	return errors.length > 0 ? { status, lines, errors } : { status, lines };
 }
 
 const clean = { status: 0, lines: ['check-merge: no one-way-door path'] };
@@ -113,7 +115,6 @@ const doorExamples = [
 	'migrations/0001_init.sql',
 	'functions/db/migrations/0002.sql',
 	'templates/githooks/pre-push',
-	'templates/CODEOWNERS',
 	'bin/catati.mjs',
 	'lib/check-merge.mjs',
 	'lib/repo.mjs',
@@ -398,4 +399,160 @@ test('a diff of thousands of long paths is read whole', (t) => {
 	const plain = commit(Object.fromEntries(Array.from({ length: 4000 }, (_, index) => [`${dir}/${index}-${'f'.repeat(100)}.md`, 'x\n'])));
 	assert.deepEqual(run([base, plain]), clean);
 	assert.deepEqual(run([base, commit({ Makefile: 'x\n' })]), { status: 1, lines: ['one-way-door: Makefile'] });
+});
+
+const packageJson = (fields, indent = '\t') => `${JSON.stringify({ name: 'app', private: true, ...fields }, null, indent)}\n`;
+const scripts = { deploy: 'wrangler deploy' };
+const pin = (sha) => `git+https://github.com/catati/dev.git#${sha}`;
+const packageDoor = { status: 1, lines: ['one-way-door: package.json'] };
+
+test('a package.json diff that changes only the top-level version is not a door', (t) => {
+	const { commit, run } = repo(t);
+	const base = commit({ 'package.json': packageJson({ version: '1.2.0', scripts }), 'web/Package.Json': packageJson({ scripts }) });
+	const head = commit({ 'package.json': packageJson({ version: '1.3.0', scripts }, 2), 'web/Package.Json': packageJson({ version: '0.1.0', scripts }) });
+	assert.deepEqual(run([base, head]), clean);
+	assert.deepEqual(run([head, commit({ 'package.json': packageJson({ scripts }) })]), clean);
+});
+
+test('a package.json diff that changes the version and anything else is a door', async (t) => {
+	const cases = {
+		scripts: [{ version: '1.0.0', scripts }, { version: '1.0.1', scripts: { deploy: 'wrangler deploy --env prod' } }],
+		'a nested version': [{ version: '1.0.0', config: { version: 'a' } }, { version: '1.0.0', config: { version: 'b' } }],
+		'key order': [{ version: '1.0.0', bin: 'a', main: 'b' }, { version: '1.0.1', main: 'b', bin: 'a' }],
+		'another dependency': [{ version: '1.0.0', dependencies: { hono: '4.0.0' } }, { version: '1.0.1', dependencies: { hono: '4.0.1' } }],
+	};
+	for (const [name, [before, after]] of Object.entries(cases)) {
+		await t.test(name, (t) => {
+			const { commit, run } = repo(t);
+			const base = commit({ 'package.json': packageJson(before) });
+			assert.deepEqual(run([base, commit({ 'package.json': packageJson(after) })]), packageDoor);
+		});
+	}
+});
+
+test('a package.json that JSON.parse cannot read exactly, or that is not an object, stays a door', async (t) => {
+	const cases = {
+		unparsable: ['{"version": "1.0.0", scripts}\n', '{"version": "1.0.1", scripts}\n'],
+		'unparsable before': ['x\n', packageJson({ version: '1.0.1' })],
+		'a duplicate key': ['{"version":"1.0.0","scripts":{"a":"x"},"scripts":{"a":"x"}}\n', '{"version":"1.0.1","scripts":{"a":"y"},"scripts":{"a":"x"}}\n'],
+		'an escaped key': ['{"version":"1.0.0","scripts":{}}\n', '{"version":"1.0.1","scr\\u0069pts":{}}\n'],
+		'a byte order mark': [`﻿${packageJson({ version: '1.0.0' })}`, `﻿${packageJson({ version: '1.0.1' })}`],
+		'not an object': ['["1.0.0"]\n', '["1.0.1"]\n'],
+	};
+	for (const [name, [before, after]] of Object.entries(cases)) {
+		await t.test(name, (t) => {
+			const { commit, run } = repo(t);
+			const base = commit({ 'package.json': before });
+			assert.deepEqual(run([base, commit({ 'package.json': after })]), packageDoor);
+		});
+	}
+});
+
+test('a package.json that is added, deleted or made executable stays a door', (t) => {
+	const { commit, git, run } = repo(t);
+	const base = commit({ 'README.md': 'a\n' });
+	const added = commit({ 'package.json': packageJson({ version: '1.0.0' }) });
+	assert.deepEqual(run([base, added]), packageDoor);
+	const deleted = commit({}, { remove: ['package.json'] });
+	assert.deepEqual(run([added, deleted]), packageDoor);
+	const again = commit({ 'package.json': packageJson({ version: '1.0.0' }) });
+	git('update-index', '--chmod=+x', 'package.json');
+	git('commit', '-q', '-m', 'exec');
+	assert.deepEqual(run([again, git('rev-parse', 'HEAD')]), packageDoor);
+});
+
+function upstream(t) {
+	const { root, commit, git } = repo(t);
+	const old = commit({ 'README.md': 'old\n' });
+	const head = commit({ 'README.md': 'head\n' });
+	git('checkout', '-q', '-b', 'side');
+	const side = commit({ 'README.md': 'side\n' });
+	git('checkout', '-q', 'main');
+	return { url: pathToFileURL(root).href, old, head, side };
+}
+
+const driver = `import { checkMerge } from ${JSON.stringify(pathToFileURL(join(packageRoot, 'lib/check-merge.mjs')).href)};
+process.exitCode = checkMerge(process.cwd(), JSON.parse(process.argv[1]), process.argv[2]);`;
+
+function runAgainst(fixture, url, args) {
+	return outcome(spawnSync(process.execPath, ['--input-type=module', '-e', driver, JSON.stringify(args), url], { cwd: fixture.root, encoding: 'utf8' }));
+}
+
+test('a package.json diff that only moves the @catati/dev pin to a commit on catati/dev main is not a door', async (t) => {
+	const dev = upstream(t);
+	for (const section of ['dependencies', 'devDependencies']) {
+		await t.test(section, (t) => {
+			const fixture = repo(t);
+			const { commit } = fixture;
+			const base = commit({ 'package.json': packageJson({ version: '1.0.0', [section]: { '@catati/dev': pin(dev.old), hono: '4.0.0' } }), 'pnpm-lock.yaml': 'old\n' });
+			const moved = commit({ 'package.json': packageJson({ version: '1.0.0', [section]: { '@catati/dev': pin(dev.head), hono: '4.0.0' } }), 'pnpm-lock.yaml': 'new\n' });
+			assert.deepEqual(runAgainst(fixture, dev.url, [base, moved]), clean);
+			const bumped = commit({ 'package.json': packageJson({ version: '1.1.0', [section]: { '@catati/dev': pin(dev.old), hono: '4.0.0' } }) });
+			assert.deepEqual(runAgainst(fixture, dev.url, [moved, bumped]), clean);
+		});
+	}
+	await t.test('from another pin form', (t) => {
+		const fixture = repo(t);
+		const base = fixture.commit({ 'package.json': packageJson({ devDependencies: { '@catati/dev': 'github:catati/dev#main' } }) });
+		const moved = fixture.commit({ 'package.json': packageJson({ devDependencies: { '@catati/dev': pin(dev.head) } }) });
+		assert.deepEqual(runAgainst(fixture, dev.url, [base, moved]), clean);
+	});
+});
+
+test('a @catati/dev pin move that catati/dev main does not confirm is a door', async (t) => {
+	const dev = upstream(t);
+	const before = { version: '1.0.0', devDependencies: { '@catati/dev': pin(dev.old) } };
+	const cases = {
+		'a commit off main': { devDependencies: { '@catati/dev': pin(dev.side) } },
+		'an unknown commit': { devDependencies: { '@catati/dev': pin('0123456789abcdef0123456789abcdef01234567') } },
+		'a short sha': { devDependencies: { '@catati/dev': pin(dev.head.slice(0, 12)) } },
+		'an upper-case sha': { devDependencies: { '@catati/dev': pin(dev.head.toUpperCase()) } },
+		'a branch name': { devDependencies: { '@catati/dev': 'git+https://github.com/catati/dev.git#main' } },
+		'an ssh url': { devDependencies: { '@catati/dev': `git+ssh://git@github.com/catati/dev.git#${dev.head}` } },
+		'a codeload url': { devDependencies: { '@catati/dev': `https://codeload.github.com/catati/dev/tar.gz/${dev.head}` } },
+		'another repo': { devDependencies: { '@catati/dev': `git+https://github.com/catati/devx.git#${dev.head}` } },
+		'a removed pin': { devDependencies: {} },
+		'a pin moved to dependencies': { dependencies: { '@catati/dev': pin(dev.head) }, devDependencies: {} },
+		'a pin added to dependencies': { dependencies: { '@catati/dev': pin(dev.head) }, devDependencies: { '@catati/dev': pin(dev.old) } },
+		'a pin in optionalDependencies': { devDependencies: { '@catati/dev': pin(dev.old) }, optionalDependencies: { '@catati/dev': pin(dev.head) } },
+		'a pin and another dependency': { devDependencies: { '@catati/dev': pin(dev.head), hono: '4.0.0' } },
+		'a pin and a script': { devDependencies: { '@catati/dev': pin(dev.head) }, scripts },
+	};
+	for (const [name, after] of Object.entries(cases)) {
+		await t.test(name, (t) => {
+			const fixture = repo(t);
+			const base = fixture.commit({ 'package.json': packageJson(before) });
+			const head = fixture.commit({ 'package.json': packageJson({ version: '1.0.1', ...after }) });
+			assert.deepEqual(runAgainst(fixture, dev.url, [base, head]), packageDoor);
+		});
+	}
+});
+
+test('a @catati/dev pin move is a door when catati/dev main cannot be fetched', (t) => {
+	const dev = upstream(t);
+	const fixture = repo(t);
+	const base = fixture.commit({ 'package.json': packageJson({ devDependencies: { '@catati/dev': pin(dev.old) } }) });
+	const head = fixture.commit({ 'package.json': packageJson({ devDependencies: { '@catati/dev': pin(dev.head) } }) });
+	const missing = pathToFileURL(join(fixture.parent, 'missing.git')).href;
+	assert.deepEqual(runAgainst(fixture, missing, [base, head]), {
+		...packageDoor,
+		errors: [`catati: check-merge: cannot fetch main from ${missing}, so a @catati/dev pin move stays a door`],
+	});
+});
+
+test('git config in the repo, in ~/.gitconfig or in the environment cannot point the catati/dev fetch elsewhere', (t) => {
+	const dev = upstream(t);
+	const fixture = repo(t);
+	const { commit, git, parent, run } = fixture;
+	const base = commit({ 'package.json': packageJson({ devDependencies: { '@catati/dev': pin(dev.old) } }) });
+	const head = commit({ 'package.json': packageJson({ devDependencies: { '@catati/dev': pin(dev.head) } }) });
+	const redirect = `url.${dev.url}.insteadOf`;
+	const real = 'https://github.com/catati/dev.git';
+	git('config', redirect, real);
+	const home = join(parent, 'home');
+	mkdirSync(home);
+	writeFileSync(join(home, '.gitconfig'), `[url "${dev.url}"]\n\tinsteadOf = ${real}\n`);
+	const env = { HOME: home, GIT_CONFIG_GLOBAL: join(home, '.gitconfig'), GIT_CONFIG_PARAMETERS: `'${redirect}'='${real}'`, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: redirect, GIT_CONFIG_VALUE_0: real };
+	const { status, lines } = run([base, head], fixture.root, env);
+	assert.deepEqual({ status, lines }, packageDoor);
 });
