@@ -93,7 +93,6 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | --- | --- |
 | An agent changes prod only when the operator asks for that specific prod action. Without that ask, agents do not change prod. | judgment |
 | Where this page says the operator runs or merges something, an agent may do it when the operator asks for it. | judgment |
-| The prod guard hook asks for approval on every prod write, in every session. Prod reads pass with no prompt. | The `catati` plugin's PreToolUse hook (`plugins/catati/hooks/guard-prod.mjs`) |
 | A merge of a PR that changes `.github/workflows/` is a prod action, because a workflow change could make a merge apply prod. A merge that changes only a prod Terraform root is not: it plans prod, and `apply-prod` applies it. | judgment |
 
 ## Exceptions
