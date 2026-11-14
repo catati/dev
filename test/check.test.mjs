@@ -89,8 +89,8 @@ test('env-example flags env templates with another name', (t) => {
 });
 
 test('an allow line suppresses its check until it expires', (t) => {
-	const allowed = 'catati-allow(env-example): tool reads this name; expires 2999-01-01\n';
-	const expired = 'catati-allow(env-example): tool reads this name; expires 2000-01-01\n';
+	const allowed = 'catati-allow(env-example): tool reads this name; expires 2999-01-01; approved by Shien\n';
+	const expired = 'catati-allow(env-example): tool reads this name; expires 2000-01-01; approved by Shien\n';
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${allowed}KEY=\n` }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${expired}KEY=\n` }, t), {
 		status: 1,
@@ -105,7 +105,7 @@ test('a repo-level allow covers files that cannot hold a comment', (t) => {
 	const files = {
 		...cleanRepo(),
 		'.github/ISSUE_TEMPLATE/issue.yml': 'name: Issue\n',
-		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2999-01-01\n',
+		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2999-01-01; approved by Shien\n',
 	};
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 });
@@ -134,10 +134,35 @@ test('a file it cannot read prints one line naming the path and exits with 2', (
 });
 
 test('an allow line with a date that does not exist is malformed', (t) => {
-	const line = 'catati-allow(env-example): tool reads this name; expires 2999-02-31';
+	const line = 'catati-allow(env-example): tool reads this name; expires 2999-02-31; approved by Shien';
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${line}\nKEY=\n` }, t), {
 		status: 1,
 		lines: ['env-example: example.env: env template is not named .env.example', `allow: example.env: malformed allow: # ${line}`],
+	});
+});
+
+test('an allow line that names no approver does not suppress its check', (t) => {
+	const unapproved = (by) => `# catati-allow(env-example): tool reads this name; expires 2999-01-01${by}\nKEY=\n`;
+	for (const by of ['', '; approved by', '; approved by ']) {
+		assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': unapproved(by) }, t), {
+			status: 1,
+			lines: [
+				'env-example: example.env: env template is not named .env.example',
+				'allow: example.env: catati-allow(env-example) names no approver; end the line with "; approved by <name>"',
+			],
+		}, JSON.stringify(by));
+	}
+	const files = {
+		...cleanRepo(),
+		'.github/ISSUE_TEMPLATE/issue.yml': 'name: Issue\n',
+		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2000-01-01\n',
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'templates-equal: .github/ISSUE_TEMPLATE/issue.yml: differs from templates/issue.yml',
+			'allow: .catati-allow: catati-allow(templates-equal) names no approver; end the line with "; approved by <name>"',
+		],
 	});
 });
 
@@ -325,13 +350,13 @@ test('resource-names flags a Wrangler resource that is not <repo>-<component> or
 });
 
 test('allow lines cover the new checks in a JSONC comment and in .catati-allow', (t) => {
-	const config = cleanWrangler.replace('"repo-api", /* top level */', '"catati-repo-api", // catati-allow(resource-names): renamed later; expires 2999-01-01');
+	const config = cleanWrangler.replace('"repo-api", /* top level */', '"catati-repo-api", // catati-allow(resource-names): renamed later; expires 2999-01-01; approved by Shien');
 	const files = {
 		...cleanRepo(),
 		Makefile: deployMakefile,
 		'wrangler.jsonc': config,
 		'package.json': JSON.stringify({ scripts: { deploy: 'wrangler deploy' } }),
-		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01\n',
+		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01; approved by Shien\n',
 	};
 	assert.deepEqual(runCheck(files, t, { origin: 'https://github.com/catati/repo' }), { status: 0, lines: [] });
 });
@@ -377,7 +402,7 @@ test('wrangler-envs reads -e, make prefixes, versioned wrangler and flag values'
 test('workflow-names reads the workflows it flags, so an allow line in one works', (t) => {
 	const workflow = '.github/workflows/plan.yml';
 	assert.ok(checks.find((c) => c.id === 'workflow-names').reads([workflow, '.github/workflows/ci.yml']).includes(workflow));
-	const files = { ...cleanRepo(), [workflow]: '# catati-allow(workflow-names): renamed later; expires 2999-01-01\non: push\n' };
+	const files = { ...cleanRepo(), [workflow]: '# catati-allow(workflow-names): renamed later; expires 2999-01-01; approved by Shien\non: push\n' };
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 });
 
@@ -584,7 +609,7 @@ test('a JSON file carries its allow line in a string value', (t) => {
 	const files = {
 		...cleanRepo(),
 		'package.json': JSON.stringify(
-			{ '//': 'catati-allow(wrangler-envs): legacy deploy; expires 2999-01-01', scripts: { deploy: 'wrangler deploy' } },
+			{ '//': 'catati-allow(wrangler-envs): legacy deploy; expires 2999-01-01; approved by Shien', scripts: { deploy: 'wrangler deploy' } },
 			null,
 			2,
 		),

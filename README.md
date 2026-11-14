@@ -68,19 +68,22 @@ Other repos can install the package only when `catati/dev` is public (#15).
 To accept a finding for a time, add this line to the file that has the finding:
 
 ```text
-# catati-allow(<check>): <reason>; expires YYYY-MM-DD
+# catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>
 ```
+
+`<name>` is the person who allowed the exception, so each one traces back to a person.
 
 The line turns off that check for every finding in the file that holds it, until the end of the date.
 It covers the whole file, not one line, because some findings have no line of their own. A missing `Makefile` target is an example.
 
-A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD"` in `package.json`.
+A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>"` in `package.json`.
 
 A file that cannot hold a comment or a string, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check.
 A line in `.catati-allow` turns off its check for the whole repo.
 
-An expired or malformed allow line is a finding with the check `allow`.
+An expired or malformed allow line is a finding with the check `allow`, and it turns off nothing.
 A date that does not exist, such as `2026-02-31`, makes the line malformed.
+A line with no `approved by <name>` is a finding too, such as one written before the approver was required.
 
 To test the package, run `npm test`.
 The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `npm test` on every PR and on each push to `main`.
