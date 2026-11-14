@@ -343,8 +343,11 @@ const fakeGitHub = (pulls, origins = {}) => {
   const routes = {}
   for (const [key, pull] of Object.entries(pulls)) {
     const [repo, number] = key.toLowerCase().split('#')
-    const { headSha = HEAD, comments = [], files = [] } = pull
+    const { headSha = HEAD, comments = [], files = [], blockedBy = [] } = pull
     routes[`repos/${repo}/pulls/${number}`] = { head: { sha: headSha } }
+    if (blockedBy)
+      routes[`repos/${repo}/issues/${number}/dependencies/blocked_by`] =
+        blockedBy
     routes[`repos/${repo}/issues/${number}/comments`] = comments.map(
       (body) => ({ body })
     )
@@ -412,6 +415,125 @@ test('merge: refused without a verifier PASS on the first line of a comment for 
     }).reason,
     new RegExp(`VERIFIER PASS ${HEAD}`)
   )
+})
+
+test('merge: only an exact first line VERIFIER PASS <head> is a pass, notes may follow', () => {
+  const github = fakeGitHub({
+    'catati/cat-hotel#1': {
+      comments: [`VERIFIER PASS ${HEAD}\r\n\r\nNOTES: flaky e2e`],
+    },
+    'catati/cat-hotel#2': { comments: [`VERIFIER FAIL ${HEAD}\n\nlint red`] },
+    'catati/cat-hotel#3': { comments: [` VERIFIER PASS ${HEAD}`] },
+    'catati/cat-hotel#4': { comments: [`VERIFIER PASS ${HEAD} `] },
+    'catati/cat-hotel#5': { comments: [`VERIFIER PASS+NOTES ${HEAD}`] },
+    'catati/cat-hotel#6': { comments: [`VERIFIER PASS ${HEAD.slice(0, 7)}`] },
+    'catati/cat-hotel#7': {
+      comments: [`VERIFIER PASS ${HEAD.toUpperCase()}`],
+    },
+  })
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 1), null)
+  for (const number of [2, 3, 4, 5, 6, 7])
+    assert.equal(
+      mcpMerge(github, 'catati', 'cat-hotel', number),
+      'deny',
+      `#${number}`
+    )
+  const reason = run(github, 'mcp__github__merge_pull_request', {
+    owner: 'catati',
+    repo: 'cat-hotel',
+    pullNumber: 2,
+    expectedHeadSha: HEAD,
+  }).reason
+  assert.match(reason, /conventions\/issues-and-prs\.md/)
+  assert.match(reason, /pstack/)
+  assert.doesNotMatch(reason, /github-ci-cd|root posts/)
+})
+
+test('merge: refused while the pull request has an open blocked_by issue or pull request, naming each', () => {
+  const issue = (repo, number, state) => ({
+    html_url: `https://github.com/${repo}/issues/${number}`,
+    state,
+  })
+  const pr = (repo, number, state) => ({
+    html_url: `https://github.com/${repo}/pull/${number}`,
+    state,
+    pull_request: { merged_at: null },
+  })
+  const closedFiller = Array.from({ length: 150 }, (_, i) =>
+    issue('catati/dev', 1000 + i, 'closed')
+  )
+  const github = fakeGitHub(
+    {
+      'catati/cat-hotel#7': {
+        comments: [pass(HEAD)],
+        blockedBy: [
+          issue('catati/cat-hotel', 3, 'open'),
+          pr('catati/dev', 91, 'open'),
+          pr('catati/dev', 90, 'closed'),
+        ],
+      },
+      'catati/cat-hotel#8': {
+        comments: [pass(HEAD)],
+        blockedBy: [
+          issue('catati/cat-hotel', 3, 'closed'),
+          pr('catati/dev', 90, 'closed'),
+        ],
+      },
+      'catati/cat-hotel#9': {
+        comments: [pass(HEAD)],
+        blockedBy: [...closedFiller, pr('catati/dev', 91, 'open')],
+      },
+      'catati/cat-hotel#10': {
+        blockedBy: [issue('catati/cat-hotel', 3, 'open')],
+      },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  for (const command of [
+    `gh pr merge 7 --squash ${PIN}`,
+    `gh api -X PUT repos/catati/cat-hotel/pulls/7/merge -f sha=${HEAD}`,
+  ])
+    assert.equal(shMerge(github, command), 'deny', command)
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 7), 'deny')
+  const reason = run(github, 'mcp__github__merge_pull_request', {
+    owner: 'catati',
+    repo: 'cat-hotel',
+    pullNumber: 7,
+    expectedHeadSha: HEAD,
+  }).reason
+  assert.match(reason, /https:\/\/github\.com\/catati\/cat-hotel\/issues\/3/)
+  assert.match(reason, /https:\/\/github\.com\/catati\/dev\/pull\/91/)
+  assert.doesNotMatch(reason, /pull\/90/)
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 8), null)
+  assert.equal(shMerge(github, `gh pr merge 8 ${PIN}`), null)
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 9), 'deny')
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 10), 'deny')
+  assert.match(
+    run(github, 'mcp__github__merge_pull_request', {
+      owner: 'catati',
+      repo: 'cat-hotel',
+      pullNumber: 10,
+      expectedHeadSha: HEAD,
+    }).reason,
+    /issues\/3/
+  )
+})
+
+test('merge: asks when the blocked_by dependencies cannot be read', () => {
+  const github = fakeGitHub(
+    { 'catati/cat-hotel#7': { comments: [pass(HEAD)], blockedBy: null } },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 7), 'ask')
+  assert.equal(shMerge(github, `gh pr merge 7 ${PIN}`), 'ask')
+  const reason = run(github, 'mcp__github__merge_pull_request', {
+    owner: 'catati',
+    repo: 'cat-hotel',
+    pullNumber: 7,
+    expectedHeadSha: HEAD,
+  }).reason
+  assert.match(reason, /HTTP 404/)
+  assert.match(reason, /blocks it/)
 })
 
 test('merge: a verified merge must pin the verified head commit', () => {

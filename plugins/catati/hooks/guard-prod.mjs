@@ -165,8 +165,9 @@ const GH_OPTIONS = {
   stdio: ['ignore', 'pipe', 'pipe'],
   timeout: 20000,
 }
+const MERGE_RULES = 'catati/dev conventions/issues-and-prs.md, "Merges"'
 const AUTO_MERGE = deny(
-  'Auto-merge is refused. GitHub merges whatever head the pull request has when its checks pass, so a push after the verifier record would merge an unverified commit. Merge by hand once the head has a verifier record (docs/agents/github-ci-cd.md).'
+  `Auto-merge is refused. GitHub merges whatever head the pull request has when its checks pass, so a push after the verifier record would merge an unverified commit. Merge by hand once the head has a verifier record (${MERGE_RULES}).`
 )
 const RUN_GH_DIRECTLY =
   'Run gh pr merge as its own command with the PR number, -R owner/repo and --match-head-commit.'
@@ -212,13 +213,15 @@ function readPull(api, repo, number) {
     files: all(`pulls/${number}/files`).flatMap((f) =>
       [f.filename, f.previous_filename].filter(Boolean)
     ),
+    openBlockers: all(`issues/${number}/dependencies/blocked_by`)
+      .filter((issue) => issue.state === 'open')
+      .map((issue) => issue.html_url),
   }
 }
 
 const verifierPassed = (pull) =>
   pull.comments.some(
-    (body) =>
-      VERIFIER_PASS.exec(body.split('\n')[0].trim())?.[1] === pull.headSha
+    (body) => VERIFIER_PASS.exec(body.split(/\r?\n/)[0])?.[1] === pull.headSha
   )
 
 const distinct = (values) => [
@@ -254,12 +257,16 @@ function mergeDecision(
     pull = readPull(github.api, slug, number)
   } catch (error) {
     return ask(
-      `The guard could not read pull request ${repo ?? cwd}#${number} from GitHub (${error.message}), so it cannot confirm a verifier PASS at the head commit. Approve only after you check the record yourself.`
+      `The guard could not read pull request ${repo ?? cwd}#${number} from GitHub (${error.message}), so it cannot confirm a verifier PASS at the head commit or that no open issue or pull request blocks it. Approve only after you check both yourself.`
     )
   }
+  if (pull.openBlockers.length)
+    return deny(
+      `${slug}#${number} is blocked by ${pull.openBlockers.join(', ')}, which GitHub records as open blocked_by dependencies. Merge only after each one is merged or closed (${MERGE_RULES}).`
+    )
   if (!verifierPassed(pull))
     return deny(
-      `${slug}#${number} has no verifier record for its head commit ${pull.headSha}. Merge only after a fresh non-author verifier passes at that commit and the root posts a pull request comment whose first line is "VERIFIER PASS ${pull.headSha}" (docs/agents/github-ci-cd.md).`
+      `${slug}#${number} has no verifier record for its head commit ${pull.headSha}. Merge only after a fresh non-author verifier passes at that commit and a pull request comment's first line is exactly "VERIFIER PASS ${pull.headSha}", with any notes below it. The pstack playbook in use decides who verifies and who posts the record (${MERGE_RULES}).`
     )
   if (pin?.toLowerCase() !== pull.headSha)
     return deny(
