@@ -15,14 +15,14 @@ The base branch is `main`, or `dev` in `catati-horizon`. Work on the branch the 
 
 ## 2. Pin `@catati/dev`
 
-1. Resolve the head of `catati/dev` `main` as a full 40-character SHA: `git ls-remote https://github.com/catati/dev refs/heads/main`. A short SHA fails to install. Note the commit that the base's root `package.json` pins catati/dev at, under any key, as the old pin (`git show origin/<base>:package.json`). Step 5 runs the merge gate from it.
+1. Resolve the head of `catati/dev` `main` as a full 40-character SHA: `git ls-remote https://github.com/catati/dev refs/heads/main`. A short SHA fails to install. Run `git fetch origin <base>`, then note the commit that the base's root `package.json` pins catati/dev at, under any key, as the old pin (`git show origin/<base>:package.json`). Step 5 runs the merge gate from it.
 2. Remove each older pin of catati/dev from the root `package.json` `devDependencies`: a `catati-dev` key, and an `@catati/dev` key whose spec does not start with `git+https://`, such as `github:catati/dev#<sha>`. Use `pnpm remove -D <key>` or `npm uninstall -D <key>`, with `-w` for pnpm when `pnpm-workspace.yaml` exists.
 3. Add `@catati/dev` as a dev dependency at that SHA with the package manager the repo's lockfile names. The spec is `git+https://github.com/catati/dev.git#<sha>`, because a cloud session fetches it through the git proxy, while a `github:` spec fetches from `codeload.github.com`, which a session reaches only for the repos attached to it.
    - `pnpm-lock.yaml`: `pnpm add -D 'git+https://github.com/catati/dev.git#<sha>'`. Add `-w` when `pnpm-workspace.yaml` exists, so the package lands in the root `package.json`.
    - `package-lock.json`: `npm install -D 'git+https://github.com/catati/dev.git#<sha>'`.
    - No `package.json` at the repo root: stop and report that the repo cannot pin `@catati/dev`.
 4. Both package managers can save the spec as `github:catati/dev#<sha>`. If `package.json` then holds that spec, run `npm pkg set 'devDependencies.@catati/dev=git+https://github.com/catati/dev.git#<sha>'` and run the install command again (`pnpm install` or `npm install`), so the lockfile records the `git+https` spec.
-5. Run `node_modules/.bin/catati check`. If it does not run, or it prints a `catati-dev-lock` finding, stop and report its output. A codeload form means the session reached `github.com/catati/dev` over HTTPS. Run this step again in a cloud session that has only the target repo attached.
+5. Run `node_modules/.bin/catati check`. If it does not run, or it prints a `catati-dev-lock` finding, stop and report its output. For a codeload form, rerun the skill from step 2.3 in a session that does not have catati/dev attached.
 6. If `node_modules/@catati/dev/package.json` has a `version` other than the one in `../../.claude-plugin/plugin.json` from this skill's base directory, note both in the report. The plugin and the pinned package then come from different releases.
 
 The installed package holds the rules as `node_modules/@catati/dev/conventions/` and the shared files as `node_modules/@catati/dev/templates/`. Read the conventions there.
@@ -43,8 +43,10 @@ Exit code 2 means setup could not run. Stop and report its stderr line.
 Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep every repo-specific rule. Change only what these items need.
 
 1. **The conventions link.** The file links to `https://github.com/catati/dev/tree/main/conventions` as the shared rules.
-2. **The rule table.** Follow the rule-table rule in `conventions/issues-and-prs.md`. Delete a row only when it adds nothing to the convention it restates. A row that names a repo enforcer, a repo name or account, or a stricter local form stays, and links its convention section in place of the copied wording. For example, a "No push to `main`" row that names `.githooks/pre-push` stays. When `CLAUDE.md` has no rule table, create one with the columns `Rule` and `Enforced by`. The table pairs each rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati check` as the enforcer only when `make verify` runs it. State each rule once. When the table holds a rule, delete its prose copy elsewhere in the file.
-3. **Exception lines.** Rewrite each `repo-check-allow(<check>): …` line in the repo, and the format `CLAUDE.md` gives for it, to `catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>`. Change the repo check that parses those lines in this PR. If that check is in a one-way-door path, such as `.github/**`, change neither and list both in the report for the repo's own PR. Never write an approver that the line does not already name.
+2. **The rule table.** Follow the rule-table rule in `conventions/issues-and-prs.md`. Delete a row only when it adds nothing to the convention it restates. Leave every other row as it is. A row that names a repo enforcer, a repo name or account, or a stricter local form adds something, so a "No push to `main`" row that names `.githooks/pre-push` stays. When a kept row copies convention wording, list it in the report as a suggestion to link its convention section. When `CLAUDE.md` has no rule table, create one with the columns `Rule` and `Enforced by`. The table pairs each rule with what runs it today: a named check, hook, CI job, test or skill. A rule nothing runs yet reads `None`. Write `catati check` as the enforcer only when `make verify` runs it. State each rule once. When the table holds a rule, delete its prose copy elsewhere in the file.
+3. **Exception lines.** Rewrite each `repo-check-allow(<check>): …` line in the repo to `catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>`. Rewrite the format where `CLAUDE.md` and the repo's `README.md` state it, and the repo check that parses those lines, in the same PR.
+   - Editing a file in a one-way-door path makes this PR a door. The repo check usually sits in `.github/**`, and an allow line can sit in a door file such as `api/wrangler.jsonc`, which `**/wrangler.jsonc` matches. Adding an approver to a `catati-allow` line in a door file does the same. When the rewrite needs any door file, rewrite nothing and list each line, the format and the check in the report for the repo's own PR.
+   - Never invent an approver. List each allow line that names none in the report, and ask the operator once for the names. Write only a name the operator gives.
 
 ## 4b. Repo settings
 
@@ -64,20 +66,20 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
 3. Push the work branch. Never push the base branch.
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch. pstack decides its title, body and readiness (`playbooks/opening-a-pr.md` of the `poteto-mode` skill).
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`, and note in it that it is part of catati/dev#8.
-   - Body: `Closes #<N>` for that issue, the setup output, each remaining finding and each skipped file.
+   - Body: the standard needs only `Closes #<N>` for that issue, and the `Blocked by:` line from item 7 when the PR has a merge order. The setup output, findings and skipped files go in the report.
 5. Verification follows the pstack playbook in use, which decides who verifies and who posts the record. The record's first line is `VERIFIER PASS <full 40-character head SHA>`, per the Merges section of `conventions/issues-and-prs.md`.
 6. Run `catati check-merge` from the base copy of `@catati/dev`, which is the old pin. Never run it from the new pin, because this PR is what moves it.
 
    ```sh
+   gate=$(mktemp -d)
    git fetch --depth 1 https://github.com/catati/dev <old pin>
-   git archive -o /tmp/catati-gate.tar FETCH_HEAD bin lib
-   mkdir -p /tmp/catati-gate
-   tar -xf /tmp/catati-gate.tar -C /tmp/catati-gate
-   node /tmp/catati-gate/bin/catati.mjs check-merge origin/<base> HEAD
+   git archive -o "$gate/gate.tar" <old pin> bin lib
+   tar -xf "$gate/gate.tar" -C "$gate"
+   node "$gate/bin/catati.mjs" check-merge origin/<base> HEAD
    ```
 
-   Exit 0 means no door. With no door, the session merges the PR once the record names its head and CI is green. Any other exit, or no old pin, means a door. With a door, ask the operator once to merge it, after the record and green CI, and quote the gate output.
-7. If this PR must merge before or after another PR, record the order in the later PR's body as one line `Blocked by: <ref>, <ref>`. Each ref is `#N` or `owner/repo#N`, per the Merges section of `conventions/issues-and-prs.md`. Do not add a native `blocked_by` dependency to a PR, because GitHub refuses one on a PR. The prod guard refuses the merge while a named issue or PR is open.
+   Exit 0 means only that no listed door path changed. A change that touches production is still the operator's to merge. Any other exit, or no old pin, means a door. With no door and no production change, the PR merges per the pstack playbook in use, once the record names its head and the required CI is green. With a door, the operator merges it.
+7. If this PR must merge before or after another PR, record the order in the later PR's body as one line `Blocked by: <ref>, <ref>`. Each ref is `#N` or `owner/repo#N`, per the Merges section of `conventions/issues-and-prs.md`. Do not add a native `blocked_by` dependency to a PR, because GitHub refuses one on a PR. Once catati/dev#95 lands, the prod guard refuses the merge while a named issue or PR is open.
 
 ## 6. Report
 
@@ -87,7 +89,8 @@ Reply with:
 - the setup output;
 - each skipped file and why a person must reconcile it;
 - each remaining `catati check` finding;
-- what changed in `CLAUDE.md`, and each exception line left for the repo's own PR;
+- what changed in `CLAUDE.md`, and each kept rule-table row to link to its convention section;
+- each exception line left for the repo's own PR, and each allow line with no approver;
 - each label created, each repo setting that differs from the conventions, and each read that failed;
 - the merge gate output, and who merges;
 - the PR URL, or "already up to date" when the run changed nothing.
