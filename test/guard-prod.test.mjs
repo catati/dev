@@ -476,7 +476,7 @@ test('merge: refused while the Blocked by line names an open issue or pull reque
       'catati/cat-hotel#3': { state: 'open' },
       'catati/dev#91': { state: 'open' },
       'catati/dev#90': { state: 'closed', mergedAt: '2026-11-14T00:00:00Z' },
-      'catati/cat-hotel#11': { body: 'Blocked by: #3' },
+      'catati/cat-hotel#11': { comments: [pass(HEAD)], body: 'Blocked by: #3' },
     },
     { '/work': 'catati/cat-hotel' }
   )
@@ -584,6 +584,95 @@ test('merge: a Blocked by ask never replaces a missing verifier record or a wron
   assert.deepEqual(everySpelling(github, 7), ['deny', 'deny', 'deny'])
   assert.deepEqual(everySpelling(github, 8), ['deny', 'deny', 'deny'])
   assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 9, OLD), 'deny')
+})
+
+const blockerReads = (github) =>
+  github.reads.filter((path) => /^repos\/[^/]+\/[^/]+\/issues\/\d+$/.test(path))
+const refList = (count, from = 40) =>
+  Array.from({ length: count }, (_, i) => `#${from + i}`).join(', ')
+
+test('merge: a missing verifier record or a wrong pin denies before any Blocked by ref is read', () => {
+  const github = fakeGitHub(
+    {
+      'catati/cat-hotel#7': { body: `Blocked by: ${refList(2100, 1000)}` },
+      'catati/cat-hotel#8': { body: 'Blocked by: #3' },
+      'catati/cat-hotel#9': {
+        comments: [pass(HEAD)],
+        body: `Blocked by: ${refList(2100, 1000)}`,
+      },
+      'catati/cat-hotel#3': { state: 'open' },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(github, 7), ['deny', 'deny', 'deny'])
+  assert.deepEqual(everySpelling(github, 8), ['deny', 'deny', 'deny'])
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 9, OLD), 'deny')
+  assert.match(shReason(github, `gh pr merge 7 ${PIN}`), /no verifier record/)
+  assert.deepEqual(blockerReads(github), [])
+})
+
+test('merge: a Blocked by list of more than 10 refs asks and reads none of them, 10 refs are read', () => {
+  const closed = Object.fromEntries(
+    Array.from({ length: 11 }, (_, i) => [
+      `catati/cat-hotel#${40 + i}`,
+      { state: 'closed' },
+    ])
+  )
+  const ten = fakeGitHub(
+    {
+      ...closed,
+      'catati/cat-hotel#7': {
+        comments: [pass(HEAD)],
+        body: `Blocked by: ${refList(10)}`,
+      },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(ten, 7), [null, null, null])
+  assert.equal(blockerReads(ten).length, 30)
+  const eleven = fakeGitHub(
+    {
+      ...closed,
+      'catati/cat-hotel#8': {
+        comments: [pass(HEAD)],
+        body: `Blocked by: ${refList(6)}\nBlocked by: ${refList(5, 46)}, #40`,
+      },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(eleven, 8), ['ask', 'ask', 'ask'])
+  assert.match(shReason(eleven, `gh pr merge 8 ${PIN}`), /11\b.*\b10\b/)
+  assert.deepEqual(blockerReads(eleven), [])
+})
+
+test('merge: a malformed Blocked by line does not hide an open ref on a well-formed line', () => {
+  const github = fakeGitHub(
+    {
+      'catati/cat-hotel#50': { state: 'closed' },
+      'catati/cat-hotel#51': { state: 'open' },
+      'catati/cat-hotel#7': {
+        comments: [pass(HEAD)],
+        body: 'Blocked by #50\nBlocked by: #51',
+      },
+      'catati/cat-hotel#8': {
+        comments: [pass(HEAD)],
+        body: 'Blocked by: #51\nBlocked by #50',
+      },
+      'catati/cat-hotel#9': {
+        comments: [pass(HEAD)],
+        body: 'Blocked by #51\nBlocked by: #50',
+      },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(github, 7), ['deny', 'deny', 'deny'])
+  assert.deepEqual(everySpelling(github, 8), ['deny', 'deny', 'deny'])
+  assert.match(shReason(github, `gh pr merge 7 ${PIN}`), /cat-hotel#51\b/)
+  assert.deepEqual(everySpelling(github, 9), ['ask', 'ask', 'ask'])
+  assert.match(
+    shReason(github, `gh pr merge 9 ${PIN}`),
+    /Blocked by: #N, owner\/repo#N/
+  )
 })
 
 test('merge: a verified merge must pin the verified head commit', () => {
