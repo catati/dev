@@ -1,6 +1,6 @@
 {
   "name": "@catati/dev",
-  "version": "0.11.4",
+  "version": "0.15.0",
   "private": true,
   "description": "Checks that a Catati repo follows the shared names and templates",
   "type": "module",
