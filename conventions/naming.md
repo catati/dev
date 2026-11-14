@@ -87,4 +87,4 @@ Each row that can end names the open issue that tracks its end. A row with no en
 | `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod`. | [cat-hotel#535](https://github.com/catati/cat-hotel/issues/535) |
 | Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. | [cat-hotel#536](https://github.com/catati/cat-hotel/issues/536) |
 | GitHub environments `development` and `production` in `catsper` | `dev` and `prod` only | `catsper` renames them. | [dev#105](https://github.com/catati/dev/issues/105) |
-| Catsper stem `catati-catsper`, which the dev D1 database still uses | The repo name is the stem. | No Catsper resource uses `catati-catsper`. | [dev#106](https://github.com/catati/dev/issues/106) |
+| Catsper stem `catati-catsper`, which the dev D1 database and the dev Queues `catati-catsper-cat-deletions` and `catati-catsper-home-deletions` still use | The repo name is the stem. | No Catsper resource uses `catati-catsper`. | [dev#106](https://github.com/catati/dev/issues/106) |
