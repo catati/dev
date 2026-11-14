@@ -9,7 +9,7 @@ import { checks } from '../lib/check.mjs';
 const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
 
-const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true', 'lint help:', '\t@true', ''].join('\n');
+const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true', 'lint help format staged-check:', '\t@true', ''].join('\n');
 
 function cleanRepo() {
 	return {
@@ -65,8 +65,13 @@ test('templates-equal flags a changed and a missing template', (t) => {
 });
 
 test('make-targets flags each missing core target', (t) => {
-	const files = { ...cleanRepo(), Makefile: 'install test verify lint help:\n\t@true\ne2e-test:\n\t@true\nE2E := e2e\n' };
+	const files = { ...cleanRepo(), Makefile: 'install test verify lint help format staged-check:\n\t@true\ne2e-test:\n\t@true\nE2E := e2e\n' };
 	assert.deepEqual(runCheck(files, t), { status: 1, lines: ['make-targets: Makefile: no target e2e'] });
+	const hooksMissing = { ...cleanRepo(), Makefile: 'install test e2e verify lint help:\n\t@true\nformat-check staged:\n\t@true\n' };
+	assert.deepEqual(runCheck(hooksMissing, t), {
+		status: 1,
+		lines: ['make-targets: Makefile: no target format', 'make-targets: Makefile: no target staged-check'],
+	});
 });
 
 test('ci-workflow flags a CI workflow with another name', (t) => {
