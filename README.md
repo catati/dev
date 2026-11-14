@@ -192,9 +192,9 @@ It prints one line per match, as `one-way-door: <path>`, and exits with 1. A sym
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
 A failed git call or diff output it cannot parse also exits with 2. That covers only output git prints. An entry that git leaves out is unseen, which is why the gate sets the config that decides what git prints.
 
-A pull request that matches is the operator's to merge, after a non-author verifier PASS at its head commit and green CI. A repo's own merge rule can narrow that, as cat-hotel's does for a `package.json` diff that changes only `version`. Every other pull request is merged by the session that owns it once those gates pass.
+A pull request that matches, or whose merge changes production, is the operator's to merge, after a non-author verifier PASS at its head commit and green CI (see [deploy.md](conventions/deploy.md) for who changes prod). A repo's own merge rule can narrow that, as cat-hotel's does for a `package.json` diff that changes only `version`. Every other pull request is merged by the session that owns it once those gates pass.
 
-The rule also names "anything touching production". No path list can prove that a change leaves production alone. Exit 0 means only that no listed path changed.
+The one-way-door rule also names "anything touching production". No path list can prove that a change leaves production alone. Exit 0 means only that no listed path changed.
 A deploy script that a `Makefile` target calls, such as `scripts/deploy.sh`, is an example of a change the list does not see.
 
 Run the gate from the base branch's copy of `@catati/dev`, never from the PR head. The head's copy is the code under review, so a PR could edit it to pass itself.
