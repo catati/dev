@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { isMainModule } from './main-module.mjs';
 
 export const modelRule = new URL('../rules/pstack-models.md', import.meta.url);
 
@@ -79,7 +79,7 @@ export function pluginSessionStart({ base, home }) {
 	return problems;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (isMainModule(import.meta.url)) {
 	const base = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 	for (const problem of pluginSessionStart({ base, home: homedir() })) console.log(`catati: ${problem}`);
 }

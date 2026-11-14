@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -23,11 +23,11 @@ function box(t) {
 		return path;
 	};
 	const hooksPath = (path) => spawnSync('git', ['config', '--get', 'core.hooksPath'], { cwd: path, encoding: 'utf8', env }).stdout.trim();
-	const run = (cwd, projectDir) => {
-		const result = spawnSync(process.execPath, [script], { cwd, encoding: 'utf8', env: projectDir ? { ...env, CLAUDE_PROJECT_DIR: projectDir } : env });
+	const run = (cwd, projectDir, entry = script) => {
+		const result = spawnSync(process.execPath, [entry], { cwd, encoding: 'utf8', env: projectDir ? { ...env, CLAUDE_PROJECT_DIR: projectDir } : env });
 		return { status: result.status, out: result.stdout + result.stderr };
 	};
-	return { home, project, repo, hooksPath, run, rulePath: join(home, '.claude', 'rules', 'pstack-models.md') };
+	return { parent, home, project, repo, hooksPath, run, rulePath: join(home, '.claude', 'rules', 'pstack-models.md') };
 }
 
 test('a project folder that is no repo gets the git hooks path set in each repo below it', (t) => {
@@ -70,4 +70,12 @@ test('a project folder that cannot be read still installs the model rule and exi
 	const { status, out } = b.run(b.project, join(b.project, 'missing'));
 	assert.deepEqual({ status, out }, { status: 0, out: '' });
 	assert.ok(existsSync(b.rulePath));
+});
+
+test('the session setup runs when its script is started through a symlink', (t) => {
+	const b = box(t);
+	const link = join(b.parent, 'session-start.mjs');
+	symlinkSync(script, link);
+	assert.deepEqual(b.run(b.project, b.project, link), { status: 0, out: '' });
+	assert.deepEqual(readFileSync(b.rulePath), rule);
 });

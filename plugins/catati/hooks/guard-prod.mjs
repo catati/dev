@@ -10,7 +10,15 @@ const ACCOUNTS = {
 const PROD_WORKER_OR_DATABASE =
   /(?<![\w-])(catati-)?cat-hotel(-(admin|app|landing|api))?(?![\w-])|catati-brand-guide/
 const DEV_NAME = /-dev\b|\bdev-|\bdev\./
-const WRITE_METHOD = /method\s*:\s*['"`](POST|PUT|PATCH|DELETE)['"`]/i
+const LITERAL_METHOD =
+  /^(?:^|[^\w$])(['"]?)method\1\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE)\2(?=\s*[,}])/
+const OPAQUE_CODE = [
+  /[^\x09\x0a\x0d\x20-\x7e]/,
+  /\\[ux0-7]/,
+  /\.\.\./,
+  /\[(?!\s*\d+\s*\])/,
+  /\b(Object|Reflect|Proxy|Request|Response|fetch|eval|Function|constructor|prototype|__proto__|parse|import|require|globalThis|this|with|setTimeout|setInterval)\b/,
+]
 const ZONE_PATH = /\/zones\//
 const CLI =
   /(^|[;&|(]\s*|\bsudo\s+|\b(exec|dlx|npx)\s+)(firebase|gcloud|gsutil)(\s|$)/
@@ -109,6 +117,15 @@ const API_ROUTINE_PULL_WRITES = [
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/comments\/\d+\/replies$/,
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/ccr\/(ready_for_review|convert_to_draft|comments\/\d+\/(un)?resolve)$/,
 ]
+const ACTIONS_RUN_ROUTE =
+  /^repos\/[^/]+\/[^/]+\/(dispatches|actions\/workflows\/[^/]+\/dispatches|actions\/runs\/\d+\/(rerun|rerun-failed-jobs)|actions\/jobs\/\d+\/rerun)$/
+const GH_STARTS_RUN = [
+  ['workflow', 'run'],
+  ['run', 'rerun'],
+]
+const WORKFLOW_RUN = ask(
+  'This starts or reruns a GitHub Actions workflow, and a workflow such as cat-hotel deploy-prod or terraform apply-prod changes production. Approve only if Shien asked for this specific run.'
+)
 const HIDDEN_MERGE = /\bgh\b[\s\S]*(\bmerge\b|auto_merge)/
 const PULLS_PATH = /\bpulls\//i
 const PUT_WORD = /\bput\b/i
@@ -444,6 +461,8 @@ function ghApiDecision(args, context) {
       `This gh api write names an endpoint the shell fills in later (${endpoints.join(' ')}), so the guard cannot tell whether it merges. Write the path out, or ${RUN_GH_DIRECTLY}`
     )
   const routes = endpoints.map(apiRoute)
+  if (routes.some((route) => route !== null && ACTIONS_RUN_ROUTE.test(route)))
+    return WORKFLOW_RUN
   const target = routes
     .map((route) => route !== null && API_MERGE_ROUTE.exec(route))
     .find(Boolean)
@@ -499,10 +518,14 @@ function ghDecision(rawArgs, context) {
   const first = ghCommandWord(args, 0)
   if (UNKNOWN_WORD.test(args[first] ?? '')) return UNKNOWN_SUBCOMMAND
   if (args[first] === 'api') return ghApiDecision(without(args, first), context)
-  if (args[first] !== 'pr') return allow
+  if (!['pr', 'workflow', 'run'].includes(args[first])) return allow
   const second = ghCommandWord(args, first + 1)
   if (UNKNOWN_WORD.test(args[second] ?? '')) return UNKNOWN_SUBCOMMAND
-  if (args[second] !== 'merge') return allow
+  const startsRun = GH_STARTS_RUN.some(
+    ([group, verb]) => args[first] === group && args[second] === verb
+  )
+  if (startsRun) return WORKFLOW_RUN
+  if (args[first] !== 'pr' || args[second] !== 'merge') return allow
   return ghPrMergeDecision(without(args, first, second), context)
 }
 
@@ -598,7 +621,7 @@ function stdinShell(items, command) {
     const { name, args } = program(tokens(item.text))
     return (
       SHELLS.has(name) &&
-      nestedCommand(name, args) === null &&
+      nestedCommands(name, args) === null &&
       args.every((arg) => arg.startsWith('-'))
     )
   })
@@ -609,14 +632,32 @@ function stdinShell(items, command) {
     : allow
 }
 
-function decideCloudflareWrite(accountId, code) {
+function literalMethods(code) {
+  if (typeof code !== 'string') return null
+  if (OPAQUE_CODE.some((pattern) => pattern.test(code))) return null
+  const methods = []
+  for (const at of code.matchAll(/method/gi)) {
+    const literal = LITERAL_METHOD.exec(code.slice(Math.max(0, at.index - 1)))
+    if (!literal) return null
+    methods.push(literal[3])
+  }
+  const requests = code.match(/\bcloudflare\b/g)?.length ?? 0
+  const plainRequests = code.match(/\bcloudflare\.request\(/g)?.length ?? 0
+  if (requests !== plainRequests || methods.length < requests) return null
+  return methods
+}
+
+function decideCloudflareWrite(accountId, code, readable) {
   if (ZONE_PATH.test(code))
     return prodWrite(
       'This Cloudflare write changes a zone, and zones serve production traffic. For a route change, edit the Worker wrangler.jsonc and ship it through main.'
     )
   const inProd = accountId === ACCOUNTS.prod
   const legacyDevWrite =
-    inProd && DEV_NAME.test(code) && !PROD_WORKER_OR_DATABASE.test(code)
+    readable &&
+    inProd &&
+    DEV_NAME.test(code) &&
+    !PROD_WORKER_OR_DATABASE.test(code)
   if (legacyDevWrite) return allow
   if (inProd || code.includes(ACCOUNTS.prod))
     return prodWrite(
@@ -681,6 +722,16 @@ const ENV_SPLIT_STRING = /^(?:-S|--split-string)=?(.*)$/
 const WATCH_VALUE_FLAGS = new Set(['-n', '--interval', '-q', '--equexit'])
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
 const STRING_CONSUMERS = new Set([...SHELLS, 'eval', 'source', '.', 'xargs'])
+const SHELL_LONG_VALUE_FLAGS = new Set(['--rcfile', '--init-file'])
+const OPAQUE_WRAPPERS = new Set([
+  'xargs',
+  'doas',
+  'caffeinate',
+  'script',
+  'ssh',
+  'docker',
+  'podman',
+])
 const WRANGLER_READS = [
   'dev',
   'types',
@@ -819,6 +870,11 @@ function scan(text, from, nested) {
       items.push({ kind: 'substitution', text: text.slice(i + 2, inner.end) })
       current += '$(…)'
       i = inner.end + 1
+    } else if (ch === '`') {
+      const end = backtickEnd(text, i + 1)
+      items.push({ kind: 'substitution', text: text.slice(i + 1, end) })
+      current += text.slice(i, end + 1)
+      i = end + 1
     } else if (quote) {
       if (ch === quote) quote = null
       current += ch
@@ -882,6 +938,14 @@ function scan(text, from, nested) {
   }
   flush(null)
   return { items, end: text.length }
+}
+
+function backtickEnd(text, from) {
+  for (let i = from; i < text.length; i += 1) {
+    if (text[i] === '\\') i += 1
+    else if (text[i] === '`') return i
+  }
+  return text.length
 }
 
 function ansiQuoteEnd(text, from) {
@@ -1032,11 +1096,25 @@ function wranglerReadOnly(args) {
   )
     return true
   if (WRANGLER_READS.some((prefix) => startsWith(words, prefix))) return true
-  const command = flagValue(args, '--command') ?? ''
+  const commands = flagValues(args, '--command')
   return (
     startsWith(words, ['d1', 'execute']) &&
     !args.some((arg) => arg === '--file' || arg.startsWith('--file=')) &&
-    /^\s*(select|pragma|explain)\b[^;]*;?\s*$/i.test(command)
+    commands.length > 0 &&
+    commands.every(isPlainSqlRead)
+  )
+}
+
+const SQL_READ_START = /^\s*(select|explain|with)\b/i
+const SQL_WRITE_WORD =
+  /\b(insert|update|delete|replace|upsert|drop|alter|create|attach|detach|vacuum|reindex|pragma|analyze|begin|commit|rollback|savepoint|release|returning|load_extension)\b/i
+
+function isPlainSqlRead(sql) {
+  return (
+    /^[\x20-\x7e]*$/.test(sql) &&
+    !/;|--|\/\*/.test(sql) &&
+    SQL_READ_START.test(sql) &&
+    !SQL_WRITE_WORD.test(sql)
   )
 }
 
@@ -1066,19 +1144,41 @@ function shopifyDecision(args) {
   )
 }
 
-function nestedCommand(name, args) {
-  if (name === 'eval') return args.join(' ')
+function shellCommandString(args) {
+  let readsString = false
   let i = 0
+  while (i < args.length && /^[-+]/.test(args[i]) && args[i] !== '--') {
+    const arg = args[i]
+    i += 1
+    if (arg.startsWith('--')) {
+      if (SHELL_LONG_VALUE_FLAGS.has(arg)) i += 1
+    } else {
+      if (arg.startsWith('-') && arg.includes('c')) readsString = true
+      if (/[oO]$/.test(arg)) i += 1
+    }
+  }
+  if (args[i] === '--') i += 1
+  return readsString ? args.slice(i).join(' ') : null
+}
+
+function wordSuffixes(args) {
+  return args
+    .map((arg, at) => (arg.startsWith('-') ? null : args.slice(at).join(' ')))
+    .filter((command) => command !== null)
+}
+
+function nestedCommands(name, args) {
+  if (name === 'eval') return [args.join(' ')]
   if (name === 'watch') {
+    let i = 0
     while (i < args.length && args[i].startsWith('-'))
       i += WATCH_VALUE_FLAGS.has(args[i]) ? 2 : 1
-    return args.slice(i).join(' ')
+    return [args.slice(i).join(' ')]
   }
+  if (OPAQUE_WRAPPERS.has(name)) return wordSuffixes(args)
   if (!SHELLS.has(name)) return null
-  let readsString = false
-  for (; i < args.length && args[i].startsWith('-'); i += 1)
-    if (/^-[^-]*c/.test(args[i])) readsString = true
-  return readsString ? args.slice(i).join(' ') : null
+  const command = shellCommandString(args)
+  return command === null ? null : [command]
 }
 
 function programDecision(words, { env, name, args }, context) {
@@ -1098,13 +1198,13 @@ function programDecision(words, { env, name, args }, context) {
 function decideSegment(segment, context) {
   const words = tokens(segment)
   const parsed = program(words)
-  const nested = nestedCommand(parsed.name, parsed.args)
+  const nested = nestedCommands(parsed.name, parsed.args)
   return combine([
     substitutedMerge(segment),
     assignedMerge(parsed.env),
-    nested === null
-      ? programDecision(words.join(' '), parsed, context)
-      : decideCommand(nested, context),
+    ...(nested === null
+      ? [programDecision(words.join(' '), parsed, context)]
+      : nested.map((command) => decideCommand(command, context))),
   ])
 }
 
@@ -1204,9 +1304,15 @@ export function decide(
     const code = toolInput?.code ?? ''
     if (isOverbookedNightsProdRead(toolInput?.account_id, code, reportSqlSha256))
       return allow
-    if (!WRITE_METHOD.test(code)) return allow
-    return decideCloudflareWrite(toolInput?.account_id, code)
+    const methods = literalMethods(code)
+    if (methods?.every((method) => method === 'GET')) return allow
+    return decideCloudflareWrite(toolInput?.account_id, code, methods !== null)
   }
+
+  if (toolName === 'mcp__github__actions_run_trigger')
+    return ask(
+      `This call (${toolInput?.method}) starts, reruns or cancels a GitHub Actions run, or deletes its logs, and a workflow such as cat-hotel deploy-prod or terraform apply-prod changes production. Approve only if Shien asked for this specific run.`
+    )
 
   if (SHOPIFY_WRITE.test(toolName))
     return prodWrite(
