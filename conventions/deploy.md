@@ -2,7 +2,7 @@
 
 Every Catati repo builds, tests and deploys to Cloudflare the same way. Names that carry an environment are in [naming.md](naming.md).
 
-Each rule names its check. `catati check` means `make verify` fails when it breaks. `judgment` means a reviewer checks it.
+Each rule names its check. `catati check` means each `/catati:repo-setup` run checks it. `judgment` means a reviewer checks it.
 
 ## Environments
 

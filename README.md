@@ -14,10 +14,12 @@ Each field of the environment form has one source here. Change the file, not the
 
 Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and `*.`. When a zone is added there, add it to the list and to `catatiZones` in [test/network-allowlist.test.mjs](test/network-allowlist.test.mjs).
 
+[env/setup.sh](env/setup.sh) writes the pstack model rule to `~/.claude/rules/pstack-models.md` before Claude starts, only when the file is missing, so a session without the plugin still has it. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
+
 ## Conventions
 
-`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` writes, and `templates/labels.json`, the status labels as an array of `name`, `color` and `description` objects. `catati setup` stays offline and creates no labels from it.
-Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
+`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the git hooks. `templates/` holds the files that `catati setup` writes, and `templates/labels.json`, the status labels as an array of `name`, `color` and `description` objects. `catati setup` stays offline and creates no labels from it.
+Each rule names its check. A rule marked `catati check` is checked by each `/catati:repo-setup` run. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, versions, make targets, CI checks, files and labels, and the recorded exceptions.
 - [conventions/branches.md](conventions/branches.md) covers branches, the `main` and `check` rulesets, and session start.
@@ -27,11 +29,11 @@ Each rule names its check. A rule marked `catati check` fails `make verify` when
 - [conventions/repo-settings.md](conventions/repo-settings.md) lists the GitHub settings a repo keeps: Dependabot, rulesets, the `prod` environment review and the status labels.
 - [conventions/testing.md](conventions/testing.md) maps the unit, integration and e2e layers to make targets, and lists what only production exercises.
 
-## Run `catati check` in `make verify`
+## Run `catati check`
 
 `catati check` checks the rules marked `catati check` in `conventions/`.
 It checks the whole git repo that holds the current directory, so you can run it from any subdirectory.
-It compares the repo with the `templates/` folder of the installed package, so it needs no network.
+It compares the repo with the `templates/` folder of its own copy of catati/dev, so it needs no network.
 It prints one line per finding, as `<check>: <path>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
 If it cannot run, for example outside a git repo or on a file it cannot read, it prints one line on stderr and exits with 2.
 
@@ -40,7 +42,6 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 | `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` is missing or differs by a byte from `templates/`. |
 | `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint`, `help`, `format` or `staged-check` target, or no `deploy-dev` target in a repo with a `wrangler.jsonc`. The template git hooks call `make staged-check` before a commit and name `make format` when they refuse one. |
 | `version-source` | A repo with a `wrangler.jsonc` outside `node_modules/` has no root `package.json`, or its `version` is not `MAJOR.MINOR.PATCH`, such as `2.0.0` (no `v`, no leading zero, no pre-release). Or another `package.json` outside `node_modules/` declares a `version`. The root holds the one version the repo ships. A repo with no `wrangler.jsonc` skips this check. |
-| `catati-dev-lock` | The root `pnpm-lock.yaml` or `package-lock.json` resolves `@catati/dev` by any form other than `git+https://github.com/catati/dev.git#<40-hex sha>`, such as SSH, `git@github.com:`, `github:` or a codeload tarball. In `pnpm-lock.yaml` it reads every `@catati/dev` specifier, version and key, and the key under `packages:` must be followed by `resolution: {commit: <that sha>, repo: https://github.com/catati/dev.git, type: git}`. In `package-lock.json` it reads the `resolved` of each `node_modules/@catati/dev` entry and each `@catati/dev` value in a `dependencies`, `devDependencies`, `optionalDependencies` or `peerDependencies` field under `packages`. A `resolved` value may also be `git+ssh://git@github.com/catati/dev.git#<40-hex sha>`, because npm writes that form itself on every install, even for an `https` pin. Every other value in either lockfile must be the `git+https` form. When the root `package.json` pins `@catati/dev` to a commit, every `@catati/dev` resolution in both lockfiles must name that same commit, because a frozen install uses the lockfile and not `package.json`. A finding names the line, or in `package-lock.json` the JSON path. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
 | `workflow-names` | A `.yml` or `.yaml` file in `.github/workflows/` is not `ci.yml` or `deploy.yml`. Other files there, such as a `README.md`, are not workflows, and no check reads them. |
 | `env-names` | A `wrangler.jsonc` has an `env` key other than `dev` or `prod`, a workflow's `environment` is not `dev` or `prod` and does not end in `-dev` or `-prod` (a matrix list is skipped), or an environment word (`production`, `development`, `staging` or `preview`, in any case) names a config file or a Terraform root outside `node_modules/`. A config file is `<base>.<word>.<toml|json|jsonc|yaml|yml>`, such as `shopify.app.production.toml`, `.env.<word>` or `.dev.vars.<word>`. A Terraform root is a folder named `<word>` that directly holds a `.tf` file. Other paths, such as `link-preview.vue` or `production-plans.json`, pass. |
@@ -49,24 +50,15 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 | `resource-names` | A resource name in a `wrangler.jsonc`, at the top level or in an `env.<name>`, is not `<repo>` or `<repo>-<component>`, or ends in `-dev`, `-prod`, `-production`, `-development` or `-staging`. `<repo>` is the last part of the `origin` remote URL, without `.git`. A repo with no `origin` remote skips this check. Resource names are `name`, `d1_databases[].database_name`, `r2_buckets[].bucket_name`, `queues.producers[].queue`, `queues.consumers[].queue` and `dead_letter_queue`, and `workflows[].name`. No other key is read, so `vars`, `ratelimits`, `send_email` and `durable_objects` bindings pass. |
 | `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
 
-To install the package, add it as a dev dependency pinned to a commit of this repo:
+A repo takes no dependency on catati/dev. The CLI imports only Node built-ins and its own files, so it runs from a clone with no install:
 
 ```sh
-pnpm add -D 'git+https://github.com/catati/dev.git#<sha>'
-npm install -D 'git+https://github.com/catati/dev.git#<sha>'
+tmp=$(mktemp -d)
+git clone --depth 1 https://github.com/catati/dev "$tmp"
+node "$tmp/bin/catati.mjs" check
 ```
 
-The package is `@catati/dev`, so the pin sits in `devDependencies` under the key `"@catati/dev"`, and its command is `catati`.
-A repo pinned before the package took this name keeps working on its old pin, catsper included. To move it to the new name, re-pin it with `/catati:repo-setup`.
-
-Then call it from the `verify` target:
-
-```make
-verify: lint test
-	npx catati check
-```
-
-Other repos can install the package only when `catati/dev` is public (#15).
+Each `/catati:repo-setup` run does this through `catati setup`, which prints the same findings. Only catati/dev runs `catati check` in its own CI.
 
 To accept a finding for a time, add this line to the file that has the finding:
 
@@ -93,25 +85,6 @@ A repo's own checks use the same format, such as `catati-allow(commentUse): <rea
 To test the package, run `npm test`.
 The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `npm test` on every PR and on each push to `main`.
 
-## Run `catati session-start` at session start
-
-`catati session-start` sets up a session in the git repo that holds the current directory:
-
-1. If the repo has a `.githooks` folder and `core.hooksPath` is unset, it sets `git config core.hooksPath .githooks`. If `core.hooksPath` already names another folder, such as `.husky`, it keeps that value and prints a warning.
-2. If `~/.claude/rules/pstack-models.md` is missing, it copies `plugins/catati/rules/pstack-models.md` there. It never replaces a rule you already have.
-3. It checks that `node` is 24.15 or later. If `package.json` has `packageManager: pnpm@<version>`, it checks that `corepack pnpm --version` prints that version.
-   The first run in a repo can download that pnpm version through corepack, about 1.5 s on a cold cache. The download fills the cache the repo's install step needs.
-   Each check stops after 3 s, so a session with no network starts with a `timed out` warning instead of a long wait.
-
-Each step reads the current state first, so a second run changes nothing.
-It prints one line on stdout per toolchain problem, as `catati: <problem>`, and still exits with 0.
-Claude Code adds a SessionStart hook's stdout to the session when the hook exits with 0, so the agent sees the warning and the session starts normally.
-Outside a git repo, it prints one line on stderr and exits with 2.
-
-The `catati` plugin runs steps 1 and 2 in every session, so a repo adds no SessionStart entry to its `.claude/settings.json` (see [Use the `catati` plugin](#use-the-catati-plugin)).
-
-[env/setup.sh](env/setup.sh) also writes the pstack model rule before Claude starts, with the same "only when missing" test, so a session without the plugin still has it. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
-
 ## Run `catati setup` to set a repo up to the standard
 
 `catati setup` writes the files every Catati repo carries, in the git repo that holds the current directory.
@@ -136,67 +109,10 @@ It exits with 0, also when it prints findings. If it cannot run, for example out
 If it skipped a file, its last line goes to stderr, as `catati: setup skipped <n> file(s); the standard is not fully applied`, and it still exits with 0.
 A caller such as a skill reads stderr to learn that the repo needs a person to look at the skipped files.
 
-`setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
-It neither writes nor removes a repo's `.github/CODEOWNERS`. No ruleset asks for code-owner review, so the file enforces nothing, and `catati check-merge` already lists those paths as doors.
+`setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases.
+It neither writes nor removes a repo's `.github/CODEOWNERS`. No ruleset asks for code-owner review, so the file enforces nothing, and the operator already merges those paths as [one-way doors](conventions/issues-and-prs.md#one-way-door-paths).
 
 catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
-
-## Run `catati check-merge` to list one-way-door paths
-
-`catati check-merge <base> <head>` reports whether the diff touches a one-way-door path.
-It lists the files that `git diff <base>...<head>` changes, in the git repo that holds the current directory, and matches each one against the list below.
-A rename counts as a delete and an add, so a file that moves into or out of a door path is a match.
-A `<dir>/**` entry also matches the bare `<dir>`.
-Every entry ignores letter case. Catati deploys from macOS, where APFS reads `PACKAGE.JSON` as `package.json`, so `MAKEFILE`, `PACKAGE.JSON` and `.GITHUB/x` are matches.
-
-Any symlink or submodule (gitlink) that the diff adds, changes or removes is a match, whatever its path, and so is a file that becomes a symlink or a symlink that becomes a file.
-A link can point a plain path at a door file or directory, such as `.claude` at a folder that holds `settings.json`, or `other/sub2` at `../sub`, so no path list can catch it.
-
-Git config cannot hide a change from the gate. The gate's git calls skip the system and global config and drop config passed in `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT`. They also ignore replace refs and `.git/info/grafts`, which could swap the head tree or move the merge base.
-The repo's own `.git/config` still applies, so the diff itself sets every option that config could change: `--ignore-submodules=none` (over `diff.ignoreSubmodules`, `submodule.<name>.ignore` and `ignore = all` in `.gitmodules`), `--no-renames`, `--no-abbrev`, `--no-relative` and `-z`.
-
-| Path | Why it is a one-way door |
-| --- | --- |
-| `.github/**` | CI, required checks, branch protection, CODEOWNERS, composite actions and Dependabot. |
-| `.claude/settings.json` | The permission prompts and sandbox rules of every session in the repo. |
-| `.githooks/**` | Git hooks run on every developer machine and can skip the local guards. |
-| `.claude/hooks/**` | Claude Code hooks run on every session. |
-| `plugins/*/hooks/**` | A plugin's Claude Code hooks run in every session that syncs the plugin. |
-| `.gitmodules` | Where each submodule is fetched from. |
-| `**/.npmrc` | The registry that installs, deploys included, fetch packages from. |
-| `env/setup.sh` | The setup script of every cloud session. |
-| `**/package.json` | Deploy and release scripts live in `scripts`. In catati/dev, `bin` also names the gate's entry point. A version bump and a `@catati/dev` re-pin are not matches, as below. |
-| `**/Makefile`, `**/GNUmakefile`, `**/*.mk` | Deploy targets. A variable or an `include` can change one without touching its lines, so any change counts. |
-| `**/Dockerfile`, `**/Dockerfile.*`, `**/*.Dockerfile`, `**/Containerfile`, `**/Containerfile.*`, `**/*.Containerfile`, `**/compose*.yml`, `**/compose*.yaml`, `**/docker-compose*` | What the deployed containers run. |
-| `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
-| `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. These count only at the root, so a `firestore.rules` in a subfolder is not a match. |
-| `**/migrations/**` | Data migrations. |
-| `templates/githooks/**` | `catati setup` copies these into the Git hooks of every repo. |
-| `bin/catati.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test follows the `check-merge` entry of the command table and fails when it loads a module outside this list, or when any module it loads has an `import()` whose target is not a literal. |
-
-A changed path that holds a control character (U+0000 to U+001F or U+007F) or a line or paragraph separator (U+2028, U+2029) is a match whatever its name. No real file needs such a name, and the gate cannot be sure what a tool downstream makes of it. The gate prints that path with each such character as `\uXXXX`.
-
-Lockfiles are not doors. CI checks a dependency bump, and a door on every lockfile would send every bump to the operator.
-
-Two routine `package.json` changes are not doors either, for the same reason. The gate parses both sides of the file as JSON and compares them with the exempt fields removed. It never reads diff lines. Both exemptions apply only to a `package.json` whose path matches no door glob other than `**/package.json`, so `.github/actions/a/package.json`, `migrations/package.json`, `plugins/catati/hooks/package.json` and `templates/githooks/package.json` stay matches.
-
-- A diff that changes only the top-level `version`, when it is a string on both sides. Each shipping PR bumps the version, so a door on it would send nearly every PR to the operator.
-- A diff that changes only the `@catati/dev` entry in `dependencies` or `devDependencies`, with or without a `version` change, when both the old and the new value are `git+https://github.com/catati/dev.git#<40-hex sha>`, the new commit is on catati/dev `main`, and the old commit is an ancestor of the new one. The code a re-pin pulls in was reviewed and merged here, and catati/dev sends its own door paths to the operator.
-
-The gate confirms each pin move with a treeless clone of `main` from `https://github.com/catati/dev.git`, then runs `git merge-base --is-ancestor` in that clone. The clone goes into a new temporary folder, with no template (`--template=`). Its git calls skip the system and global config and get only these environment variables: `PATH`, `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` (each in upper and lower case), `GIT_SSL_CAINFO` and `SSL_CERT_FILE`, plus the settings that skip config, replace refs and grafts, and `GIT_TERMINAL_PROMPT=0`. So no repo, user or environment config, template, helper or alternate object store can point the clone elsewhere. The proxy and CA variables stay because a cloud session needs them. A pin move it cannot confirm stays a match. When the clone fails, the gate prints `catati: check-merge: cannot fetch main from https://github.com/catati/dev.git, so a @catati/dev pin move stays a door` on stderr and counts the file as a match.
-
-Anything else in a `package.json` stays a match: a file that is added, deleted or changes mode, a side that does not parse, a `version` that is added, removed or not a string, any other change (key order included), a pin that moves back or sideways along `main`, a pin whose old or new value has another form, such as `github:catati/dev#main` or `file:../dev`, a pin in another section, and a file whose text says more than `JSON.parse` reads, such as a duplicate or escaped key, which another reader could take differently.
-
-It prints one line per match, as `one-way-door: <path>`, and exits with 1. A symlink adds ` (symlink)` and a submodule adds ` (submodule)` to its line, and a door path that is also a link prints once. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
-With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
-A failed git call or diff output it cannot parse also exits with 2. That covers only output git prints. An entry that git leaves out is unseen, which is why the gate sets the config that decides what git prints.
-
-A pull request that matches, or whose merge changes production, is the operator's to merge (see [deploy.md](conventions/deploy.md) for who changes prod). [Merges](conventions/issues-and-prs.md#merges) in `issues-and-prs.md` says what every merge needs first.
-
-The one-way-door rule also names "anything touching production". No path list can prove that a change leaves production alone. Exit 0 means only that no listed path changed.
-A deploy script that a `Makefile` target calls, such as `scripts/deploy.sh`, is an example of a change the list does not see.
-
-Run the gate from the base branch's copy of `@catati/dev`, never from the PR head. The head's copy is the code under review, so a PR could edit it to pass itself.
 
 ## Use the `catati` plugin
 
@@ -204,12 +120,12 @@ This repo is also a Claude Code plugin marketplace, `.claude-plugin/marketplace.
 The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo has one.
 
 The operator adds the marketplace at account level on claude.ai. Account plugins sync into sessions started from the app, not into sessions started through the sessions API (#25).
-A synced plugin holds only its own folder, so the skill cannot run the repo's `bin/`. It installs the package into the target repo instead.
+A synced plugin holds only its own folder, so the skill cannot run the repo's `bin/`. It clones catati/dev into a temp folder and runs `bin/catati.mjs` from there.
 
 | Part | What it does |
 | --- | --- |
-| `/catati:repo-setup` | Pins `@catati/dev` in the target repo at the head of `main`, runs `catati setup`, adds the `CLAUDE.md` conventions link and the rule table, then opens one PR per pstack's Opening a PR. Run it again after each `catati/dev` release. |
-| SessionStart hook `session-start.mjs` | Runs steps 1 and 2 of `catati session-start` for each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the cwd), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
+| `/catati:repo-setup` | Clones catati/dev `main` into a temp folder and runs `catati setup` from it in the target repo, removes an old `@catati/dev` pin, adds the `CLAUDE.md` conventions link and the rule table, creates missing status labels, reports how the repo's GitHub settings differ from the conventions, then opens one PR and leaves its body and merge to pstack. A repo already up to date gets no PR. Run it again after each `catati/dev` release. |
+| SessionStart hook `session-start.mjs` | Installs a missing `~/.claude/rules/pstack-models.md`, and, where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it, in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the cwd), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
 | WorktreeCreate and WorktreeRemove hook `worktree.mjs` | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. In a repo it adds a locked worktree at `<toplevel>/.claude/worktrees/<name>` on branch `worktree-<name>`, as Claude Code does. In a folder that is no repo, such as `/home/user` in a project thread, it makes `<cwd>/.claude/worktrees/<name>/` with one locked worktree per repo directly below, at the same relative paths. Each worktree starts at its repo's `HEAD`, not `origin/HEAD`, so a subagent sees the root's unpushed work. Each branch records `catatiBase` and gets `pushRemote=no-push`. Remove deletes a clean worktree on its own `worktree-<name>` branch, and that branch when it has no commits beyond `catatiBase`. It keeps, locked, a worktree that is dirty (an untracked nested repo or worktree counts), holds another worktree of its repo, or is on another branch, and exits 1. |
 
 A `WorktreeCreate` hook replaces Claude Code's own `git worktree` logic in every session, local ones included, and Claude Code then skips `.worktreeinclude`. Claude Code does not call `WorktreeRemove` when a subagent ends, because it cannot tell whether a hook-made worktree holds changes. So the root cleans up: merge each subagent's branch with `git -C <repo> merge --ff-only worktree-<name>` (or cherry-pick when two ran in parallel), then run `node "$(ls -t $(find ~/.claude/plugins -path '*/catati/hooks/worktree.mjs') | head -1)" remove <worktree path>`. Remove refuses any path that is not a `…/worktrees/<name>` folder. Like `git worktree remove`, it deletes ignored files (such as `.env` or `.dev.vars`) in a worktree it counts as clean. Subagents commit and never push; only the root pushes. A worktree has no `node_modules`, so a subagent that runs tests runs `make install` first. `pushRemote=no-push` stops a bare `git push` only, not `git push origin <ref>`.
