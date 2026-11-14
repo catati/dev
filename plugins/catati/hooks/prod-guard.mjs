@@ -1,22 +1,34 @@
 import { readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 import { isMainModule } from './main-module.mjs';
 
 const ACCOUNTS = { dev: '028a7270e2ad8a208cd6b01800f363f3', prod: '69f8dc2296dd15d29e03693d6492f163' };
 const APPROVE = 'Approve only if Shien asked for this specific prod action.';
 
-const RUNNER_FLAGS = ['--dir', '-C', '--filter', '-w'];
-const WRAPPER_FLAGS = {
-	sudo: ['-u', '-g'], env: ['-u', '-C'], nice: ['-n'], time: [], timeout: [], nohup: [], command: [], exec: [],
-	npx: RUNNER_FLAGS, pnpx: RUNNER_FLAGS, bunx: RUNNER_FLAGS,
-};
-const RUNNERS = new Set(['pnpm', 'npm', 'yarn', 'bun']);
-const RUNNER_VERBS = new Set(['exec', 'dlx', 'x']);
-const SHELLS = new Set(['bash', 'sh']);
+const RUNNER_VERBS = { exec: 0, dlx: 0, x: 0, run: 0, workspace: 1 };
+const KEYWORDS = ['if', 'then', 'elif', 'else', 'fi', 'do', 'done', 'while', 'until', '{', '}', '!'];
+const WRAPPERS = Object.fromEntries(
+	[
+		...[...KEYWORDS, 'time', 'nohup', 'command', 'exec', 'corepack'].map((word) => [word]),
+		...['npx', 'pnpx', 'bunx'].map((word) => [word, ['-p', '--package']]),
+		['sudo', ['-u', '-g']], ['env', ['-u', '-C']], ['nice', ['-n']], ['timeout', ['-k', '-s', '--kill-after', '--signal'], 1],
+		['xargs', ['-I', '-n', '-P', '-L', '-d', '-E', '-s', '-a']],
+		['pnpm', ['--dir', '-C', '--filter', '-F'], 0, RUNNER_VERBS], ['npm', ['-w', '--workspace', '--prefix'], 0, RUNNER_VERBS],
+		['yarn', ['--cwd'], 0, RUNNER_VERBS], ['bun', ['--cwd', '--filter', '-F'], 0, RUNNER_VERBS],
+	].map(([word, flags = [], operands = 0, verbs = {}]) => [word, { flags, operands, verbs }]),
+);
+const PROGRAM_ALIASES = new Map([['@shopify/cli', 'shopify']]);
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+const ASSIGNMENT = /^([A-Za-z_]\w*)=(.*)$/s;
 
-const WRANGLER_WRITES = new Set(['deploy', 'publish', 'delete', 'rollback', 'upload', 'put', 'bulk', 'create', 'update', 'apply', 'execute', 'trigger', 'pause', 'resume', 'purge']);
-const TERRAFORM_WRITES = new Set(['apply', 'destroy', 'import']);
+const WRANGLER_WRITES = new Set(['deploy', 'publish', 'delete', 'rollback', 'upload', 'put', 'bulk', 'create', 'update', 'apply', 'execute', 'trigger', 'pause', 'resume', 'purge', 'restore', 'insert', 'upsert', 'add', 'remove', 'set', 'rename', 'terminate']);
+const WRANGLER_LOCAL_STORE = /^(d1|kv|r2)(:|$)/;
+const TERRAFORM_WRITES = new Set(['apply', 'destroy', 'import', 'taint', 'untaint']);
 const TERRAFORM_STATE_WRITES = new Set(['rm', 'mv', 'push', 'replace-provider']);
 const SHOPIFY_DEV_THEME = ['--development', '-d', '--unpublished', '-u'];
+const SHOPIFY_LIVE_THEME = ['--publish', '--live', '-l', '--allow-live', '-a'];
+const MAKE_VALUE_FLAGS = ['-C', '-f', '-I', '-o', '-W', '--directory', '--file'];
+const GH_VALUE_FLAGS = ['-R', '--repo', '-r', '--ref', '-f', '-F', '--field', '--raw-field', '-X', '--method', '-H', '--header', '-q', '--jq', '--json'];
 const SHOPIFY_READS = ['get', 'list', 'search', 'find', 'show', 'generate', 'validate', 'graphql_query', 'graphql_schema'];
 const ACTIONS_WRITE_PATH = /deploy\.yml\/dispatches|\/rerun|pending_deployments/;
 const SQL_WRITE = /\b(INSERT|UPDATE|DELETE|REPLACE|UPSERT|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX|BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\b/i;
@@ -28,9 +40,7 @@ function text(value, name) {
 	return value;
 }
 
-function isReadSql(sql) {
-	return /^\s*(SELECT|WITH|EXPLAIN)\b/i.test(sql) && !/;(?!\s*$)/.test(sql) && !/--|\/\*/.test(sql) && !SQL_WRITE.test(sql);
-}
+const isReadSql = (sql) => /^\s*(SELECT|WITH|EXPLAIN)\b/i.test(sql) && !/;(?!\s*$)/.test(sql) && !/--|\/\*/.test(sql) && !SQL_WRITE.test(sql);
 
 function closingParen(source, from) {
 	let depth = 1;
@@ -83,53 +93,51 @@ function segments(command) {
 
 function skipFlags(words, i, valueFlags) {
 	while (words[i]?.startsWith('-')) {
-		const takesValue = valueFlags.includes(words[i]) && !RUNNER_VERBS.has(words[i + 1]);
+		const takesValue = valueFlags.includes(words[i]) && !Object.hasOwn(RUNNER_VERBS, words[i + 1]);
 		i += takesValue ? 2 : 1;
 	}
 	return i;
 }
 
-function unwrap(words) {
-	let accountId;
+function programName(word) {
+	const bare = word?.replace(/(.)@[^/]*$/, '$1');
+	return PROGRAM_ALIASES.get(bare) ?? bare?.split('/').at(-1);
+}
+
+function unwrap(words, inherited) {
+	const env = { ...inherited };
 	let i = 0;
 	for (;;) {
-		const word = words[i];
-		const assignment = /^([A-Za-z_]\w*)=(.*)$/s.exec(word ?? '');
+		const assignment = ASSIGNMENT.exec(words[i] ?? '');
+		const name = programName(words[i]);
 		if (assignment) {
-			if (assignment[1] === 'CLOUDFLARE_ACCOUNT_ID') accountId = assignment[2];
+			env[assignment[1]] = assignment[2];
 			i++;
-		} else if (Object.hasOwn(WRAPPER_FLAGS, word)) {
-			i = skipFlags(words, i + 1, WRAPPER_FLAGS[word]) + (word === 'timeout' ? 1 : 0);
-		} else if (RUNNERS.has(word)) {
-			const verb = skipFlags(words, i + 1, RUNNER_FLAGS);
-			if (!RUNNER_VERBS.has(words[verb])) break;
-			i = verb + 1;
+		} else if (Object.hasOwn(WRAPPERS, name)) {
+			const { flags, operands, verbs } = WRAPPERS[name];
+			i = skipFlags(words, i + 1, flags) + operands;
+			if (Object.hasOwn(verbs, words[i])) i = skipFlags(words, i + 1 + verbs[words[i]], flags);
 		} else break;
 	}
-	return { program: words[i]?.split('/').at(-1), args: words.slice(i + 1), accountId };
+	return { program: programName(words[i]), args: words.slice(i + 1), env };
 }
 
-function flagValues(args, names) {
-	const values = [];
-	args.forEach((arg, i) => {
-		if (names.includes(arg)) values.push(args[i + 1]);
-		for (const name of names) if (arg.startsWith(`${name}=`)) values.push(arg.slice(name.length + 1));
-	});
-	return values;
-}
-
-const positional = (args) => args.filter((arg) => !arg.startsWith('-'));
+const flagValues = (args, names) =>
+	args.flatMap((arg, i) => names.flatMap((name) => (arg === name ? [args[i + 1]] : arg.startsWith(`${name}=`) ? [arg.slice(name.length + 1)] : [])));
+const positional = (args, valueFlags = []) => args.filter((arg, i) => !arg.startsWith('-') && !valueFlags.includes(args[i - 1]));
+const resolvePath = (cwd, path = '.') => posix.resolve('/', cwd ?? '', path);
 const isDeployWorkflow = (name) => /^(deploy(\.ya?ml)?|\d+)$/i.test(String(name).split('/').at(-1));
-const hasProdSegment = (path) => String(path ?? '').split('/').includes('prod');
+const hasProdSegment = (path) => path.split('/').includes('prod');
 
 const PROGRAM_RULES = {
-	wrangler(args, { accountId }) {
+	wrangler(args, { env }) {
 		if (!args.some((arg) => WRANGLER_WRITES.has(arg))) return null;
-		if (args.includes('--dry-run') || args.includes('--local')) return null;
+		const local = args.includes('--local') && !args.includes('--remote') && args.some((arg) => WRANGLER_LOCAL_STORE.test(arg));
+		if (args.includes('--dry-run') || local) return null;
 		const commands = flagValues(args, ['--command']);
 		if (args.includes('d1') && args.includes('execute') && commands.length === 1 && flagValues(args, ['--file']).length === 0 && isReadSql(commands[0])) return null;
 		const envs = flagValues(args, ['--env', '-e']);
-		const prodAccount = accountId === ACCOUNTS.prod;
+		const prodAccount = env.CLOUDFLARE_ACCOUNT_ID === ACCOUNTS.prod;
 		if (!prodAccount && envs.length > 0 && envs.every((env) => env === 'dev')) return null;
 		const target = prodAccount ? 'CLOUDFLARE_ACCOUNT_ID names the Catati account' : envs.length ? `--env ${envs.join(', ')} is not dev` : 'no --env targets the production Worker';
 		return `This Wrangler command writes to production, because ${target}`;
@@ -137,23 +145,26 @@ const PROGRAM_RULES = {
 	terraform(args, { cwd }) {
 		const [command, stateCommand] = positional(args);
 		const writes = TERRAFORM_WRITES.has(command) || (command === 'state' && TERRAFORM_STATE_WRITES.has(stateCommand));
-		const prodRoot = flagValues(args, ['-chdir']).some(hasProdSegment) || hasProdSegment(cwd);
+		const roots = flagValues(args, ['-chdir']);
+		const prodRoot = (roots.length ? roots : ['.']).some((root) => hasProdSegment(resolvePath(cwd, root)));
 		return writes && prodRoot ? `This Terraform ${command} changes a prod root` : null;
 	},
 	shopify(args) {
 		const has = (...words) => words.some((word) => args.includes(word));
-		if (has('app') && has('deploy', 'release') && !flagValues(args, ['--config', '-c']).includes('dev')) return 'This Shopify app command changes the live app, because it has no --config dev';
+		const configs = flagValues(args, ['--config', '-c']);
+		if (has('app') && has('deploy', 'release') && (configs.length === 0 || configs.some((config) => config !== 'dev'))) return 'This Shopify app command changes the live app, because a --config is missing or not dev';
 		if (has('theme') && has('publish', 'delete')) return 'This Shopify theme command changes the live store theme';
-		if (has('theme') && has('push') && !has(...SHOPIFY_DEV_THEME)) return 'This Shopify theme push writes to a live store theme, because it has no --development or --unpublished';
+		if (has('theme') && has('push') && (!has(...SHOPIFY_DEV_THEME) || has(...SHOPIFY_LIVE_THEME))) return 'This Shopify theme push writes to a live store theme, because it names --publish or --live, or has no --development or --unpublished';
 		return null;
 	},
-	make(args) {
-		const targets = positional(args).filter((arg) => !arg.includes('='));
-		const target = targets.find((name) => name.endsWith('-prod') && /deploy|apply|migrate|release/.test(name));
+	make(args, { env }) {
+		const prodVariable = [...args, `ENV=${env.ENV}`].some((arg) => /^ENV=prod(uction)?$/.test(arg));
+		const targets = positional(args, MAKE_VALUE_FLAGS).filter((arg) => !arg.includes('='));
+		const target = targets.find((name) => /deploy|apply|migrate|release/.test(name) && (name.endsWith('-prod') || prodVariable));
 		return target ? `make ${target} runs a prod target` : null;
 	},
 	gh(args) {
-		const [group, verb, ...rest] = positional(args);
+		const [group, verb, ...rest] = positional(args, GH_VALUE_FLAGS);
 		if (group === 'workflow' && verb === 'run' && rest.some(isDeployWorkflow)) return 'This starts a deploy workflow';
 		if (group === 'run' && verb === 'rerun') return 'This reruns a GitHub Actions run, and the guard cannot tell whether that run deploys';
 		return PROGRAM_RULES.curl(args);
@@ -165,19 +176,27 @@ const PROGRAM_RULES = {
 };
 PROGRAM_RULES.tofu = PROGRAM_RULES.terraform;
 
-function judgeBash(command, cwd) {
+const SCOPE_RULES = {
+	cd: (args, scope) => (scope.cwd = resolvePath(scope.cwd, args.find((arg) => !/^[-~]/.test(arg)))),
+	export: (args, scope) => Object.assign(scope.env, unwrap(args, {}).env),
+};
+SCOPE_RULES.pushd = SCOPE_RULES.cd;
+
+function innerCommand(program, args) {
+	if (program === 'eval') return args.join(' ');
+	const flag = args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
+	return SHELLS.has(program) && flag !== -1 ? args[flag + 1] : undefined;
+}
+
+function judgeBash(command, scope) {
 	for (const words of segments(command)) {
-		const { program, args, accountId } = unwrap(words);
-		const shellFlag = args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
-		if (SHELLS.has(program) && shellFlag !== -1 && args[shellFlag + 1] !== undefined) {
-			const inner = judgeBash(args[shellFlag + 1], cwd);
-			if (inner) return inner;
-		}
-		if (program === 'eval') {
-			const inner = judgeBash(args.join(' '), cwd);
-			if (inner) return inner;
-		}
-		const action = Object.hasOwn(PROGRAM_RULES, program) ? PROGRAM_RULES[program](args, { accountId, cwd }) : null;
+		const { program, args, env } = unwrap(words, scope.env);
+		if (program === undefined) scope.env = env;
+		if (Object.hasOwn(SCOPE_RULES, program)) SCOPE_RULES[program](args, scope);
+		const inner = innerCommand(program, args);
+		const found = inner === undefined ? null : judgeBash(inner, program === 'eval' ? scope : { cwd: scope.cwd, env });
+		if (found) return found;
+		const action = Object.hasOwn(PROGRAM_RULES, program) ? PROGRAM_RULES[program](args, { env, cwd: scope.cwd }) : null;
 		if (action) return `${action} (${words.join(' ')})`;
 	}
 	return null;
@@ -206,12 +225,10 @@ const ACTIONS_METHODS = {
 };
 
 const TOOL_RULES = {
-	Bash: (input, cwd) => judgeBash(text(input.command, 'Bash command'), cwd),
+	Bash: (input, cwd) => judgeBash(text(input.command, 'Bash command'), { cwd, env: {} }),
 	mcp__cloudflare__execute: judgeCloudflare,
-	mcp__Shopify__: (input, cwd, toolName) => {
-		const name = toolName.slice('mcp__Shopify__'.length);
-		return SHOPIFY_READS.some((prefix) => name.startsWith(prefix)) ? null : `${toolName} writes to the live Shopify store`;
-	},
+	mcp__Shopify__: (input, cwd, toolName) =>
+		SHOPIFY_READS.some((prefix) => toolName.startsWith(`mcp__Shopify__${prefix}`)) ? null : `${toolName} writes to the live Shopify store`,
 	mcp__github__actions_run_trigger: (input) => {
 		const method = text(input.method, 'actions_run_trigger method');
 		if (!Object.hasOwn(ACTIONS_METHODS, method)) throw new TypeError(`actions_run_trigger method ${method} is unknown`);
@@ -237,9 +254,7 @@ function run() {
 	} catch (error) {
 		result = { decision: 'ask', reason: `The prod guard could not read this call (${error?.message ?? error}). ${APPROVE}` };
 	}
-	if (!result) return;
-	const output = { hookEventName: 'PreToolUse', permissionDecision: result.decision, permissionDecisionReason: result.reason };
-	console.log(JSON.stringify({ hookSpecificOutput: output }));
+	if (result) console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: result.decision, permissionDecisionReason: result.reason } }));
 }
 
 if (isMainModule(import.meta.url)) run();

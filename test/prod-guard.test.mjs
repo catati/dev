@@ -36,6 +36,14 @@ const rows = {
 			bash('wrangler d1 execute DB --env prod --remote --command "SELECT 1 /* x */"'),
 			bash('wrangler d1 execute DB --env prod --remote --file q.sql'),
 			bash('wrangler d1 execute DB --env prod --remote --command "SELECT 1" --command "SELECT 2"'),
+			bash('wrangler deploy --env dev --env prod'),
+			bash('wrangler secret bulk secrets.json --env dev --env production'),
+			bash('wrangler d1 time-travel restore DB --env prod --bookmark x'),
+			bash('wrangler vectorize insert idx --env prod --file x.ndjson'),
+			bash('wrangler deploy --env prod --local'),
+			bash('wrangler kv key put k v --env prod --local --remote'),
+			bash(`export CLOUDFLARE_ACCOUNT_ID=${PROD}; wrangler deploy --env dev`),
+			bash(`CLOUDFLARE_ACCOUNT_ID=${PROD}; wrangler deploy --env dev`),
 		],
 		passes: [
 			bash('npx wrangler deploy --env dev'),
@@ -47,6 +55,9 @@ const rows = {
 			bash('wrangler d1 execute DB --env prod --remote --command "SELECT created_at FROM bookings;"'),
 			bash(`CLOUDFLARE_ACCOUNT_ID=${DEV} wrangler deploy --env dev`),
 			bash('echo "wrangler deploy"'),
+			bash('wrangler kv key put k v --env prod --local'),
+			bash('wrangler r2 object put b/k --file x --local'),
+			bash(`export CLOUDFLARE_ACCOUNT_ID=${DEV}; wrangler deploy --env dev`),
 		],
 	},
 	'Terraform write': {
@@ -55,6 +66,13 @@ const rows = {
 			bash('terraform destroy', '/home/user/terraform/cat-hotel/prod'),
 			bash('tofu -chdir=cat-hotel/prod import a.b c'),
 			bash('terraform -chdir=cat-hotel/prod state rm aws_x.y'),
+			bash('terraform -chdir=cat-hotel/prod state mv a.b a.c'),
+			bash('terraform -chdir=cat-hotel/prod state push x.tfstate'),
+			bash('terraform -chdir=cat-hotel/prod state replace-provider a b'),
+			bash('terraform -chdir=cat-hotel/prod taint aws_x.y'),
+			bash('cd cat-hotel/prod && terraform apply'),
+			bash('cd /home/user/terraform/cat-hotel/prod; terraform destroy -auto-approve'),
+			bash('terraform -chdir=./cat-hotel/prod/ apply -auto-approve', '/home/user/terraform'),
 		],
 		passes: [
 			bash('terraform -chdir=cat-hotel/dev apply'),
@@ -62,6 +80,9 @@ const rows = {
 			bash('terraform -chdir=cat-hotel/prod state list'),
 			bash('terraform apply', '/home/user/terraform/cat-hotel/dev'),
 			bash('terraform destroy', '/home/user/terraform/production-notes'),
+			bash('cd ../dev && terraform apply', '/home/user/terraform/cat-hotel/prod'),
+			bash('terraform -chdir=../dev apply', '/home/user/terraform/cat-hotel/prod'),
+			bash('terraform taint -chdir=x'),
 		],
 	},
 	'Shopify CLI write': {
@@ -71,6 +92,9 @@ const rows = {
 			bash('shopify theme publish'),
 			bash('shopify theme delete -t 1'),
 			bash('shopify theme push'),
+			bash('shopify theme push -u --publish'),
+			bash('shopify theme push -d --live'),
+			bash('shopify app deploy --config dev --config prod'),
 		],
 		passes: [
 			bash('shopify app release --config dev'),
@@ -81,8 +105,22 @@ const rows = {
 		],
 	},
 	'Prod make target': {
-		asks: [bash('make deploy-prod'), bash('make deploy-prod ENV=prod'), bash('make -C api migrate-prod')],
-		passes: [bash('make deploy-dev'), bash('make verify'), bash('make check-bindings ENV=prod'), bash('make plan-prod')],
+		asks: [
+			bash('make deploy-prod'),
+			bash('make deploy-prod ENV=prod'),
+			bash('make -C api migrate-prod'),
+			bash('make deploy ENV=prod'),
+			bash('ENV=prod make release'),
+			bash('export ENV=production; make apply'),
+		],
+		passes: [
+			bash('make deploy-dev'),
+			bash('make verify'),
+			bash('make check-bindings ENV=prod'),
+			bash('make plan-prod'),
+			bash('make -f deploy.mk check ENV=prod'),
+			bash('make deploy ENV=dev'),
+		],
 	},
 	'Deploy run': {
 		asks: [
@@ -92,6 +130,8 @@ const rows = {
 			bash('gh api -X POST repos/catati/terraform/actions/workflows/deploy.yml/dispatches'),
 			bash('gh api -X POST repos/catati/cat-hotel/actions/runs/1/pending_deployments'),
 			bash('curl -X POST https://api.github.com/repos/catati/cat-hotel/actions/runs/1/rerun'),
+			bash('gh workflow -R catati/cat-hotel run deploy.yml'),
+			bash('gh workflow run --ref main deploy.yml'),
 			trigger({ method: 'run_workflow', workflow_id: 'deploy.yml', ref: 'main' }),
 			trigger({ method: 'run_workflow', workflow_id: '123456', ref: 'main' }),
 			trigger({ method: 'rerun_workflow_run', run_id: 1 }),
@@ -102,6 +142,7 @@ const rows = {
 			bash('gh run list'),
 			bash('gh run view 1'),
 			bash('gh api repos/catati/terraform/actions/workflows/ci.yml/dispatches'),
+			bash('gh workflow -R catati/deploy run ci.yml'),
 			trigger({ method: 'run_workflow', workflow_id: 'ci.yml', ref: 'main' }),
 			trigger({ method: 'cancel_workflow_run', run_id: 1 }),
 			trigger({ method: 'delete_workflow_run_logs', run_id: 1 }),
@@ -126,7 +167,49 @@ const rows = {
 	},
 	'Shopify connector write': {
 		asks: [shopifyTool('graphql_mutation'), shopifyTool('update-product'), shopifyTool('set-inventory'), shopifyTool('theme_publish')],
-		passes: [shopifyTool('get-shop-info'), shopifyTool('graphql_query'), shopifyTool('search_products'), shopifyTool('list-orders')],
+		passes: [
+			shopifyTool('get-shop-info'),
+			shopifyTool('graphql_query'),
+			shopifyTool('search_products'),
+			shopifyTool('list-orders'),
+			shopifyTool('show-collective-products'),
+		],
+	},
+	'Bash reader': {
+		asks: [
+			bash('if [ -d dist ]; then npx wrangler deploy --env prod; fi'),
+			bash('if x; then :; elif y; then wrangler deploy; else :; fi'),
+			bash('{ wrangler deploy --env prod; }'),
+			bash('! wrangler deploy'),
+			bash('until false; do wrangler deploy; done'),
+			bash('while true; do terraform -chdir=cat-hotel/prod apply; done'),
+			bash('npx wrangler@4.40.0 deploy'),
+			bash('npx wrangler@latest deploy --env prod'),
+			bash('pnpm dlx wrangler@4.20.0 deploy --env prod'),
+			bash('npm exec -- wrangler deploy --env prod'),
+			bash('pnpm exec -- wrangler deploy'),
+			bash('pnpm wrangler deploy'),
+			bash('pnpm -w wrangler deploy'),
+			bash('yarn wrangler deploy'),
+			bash('yarn workspace api wrangler deploy'),
+			bash('bun run wrangler deploy'),
+			bash('npx @shopify/cli app deploy'),
+			bash('npx -p ./tools wrangler deploy'),
+			bash('timeout -k 5 60 wrangler deploy --env prod'),
+			bash('timeout --signal=KILL 60 wrangler deploy'),
+			bash('xargs -n 1 wrangler deploy'),
+			bash('zsh -c "wrangler deploy"'),
+		],
+		passes: [
+			bash('if [ -d dist ]; then npx wrangler deploy --env dev; fi'),
+			bash('npx wrangler@4 deploy --env dev'),
+			bash('pnpm install'),
+			bash('pnpm deploy out'),
+			bash('yarn test'),
+			bash('npm run deploy -- --env prod'),
+			bash('xargs grep wrangler'),
+			bash('zsh -c "wrangler tail --env prod"'),
+		],
 	},
 };
 
@@ -144,6 +227,92 @@ for (const [row, { asks, passes }] of Object.entries(rows)) {
 		for (const call of passes) assert.equal(decide(...call), null, label(call));
 	});
 }
+
+const trunkProdWrites = [
+	'pnpm --dir api exec wrangler deploy --env prod',
+	'npx wrangler d1 migrations apply DB -e prod --remote',
+	'npx wrangler secret put KEY --env=prod',
+	'wrangler deploy --env="prod"',
+	'CLOUDFLARE_ENV=prod wrangler deploy',
+	'pnpm wrangler deploy --env prod',
+	'pnpm --dir admin exec -- wrangler deploy',
+	'npx -y wrangler@4 deploy',
+	'bunx wrangler deploy',
+	'corepack pnpm@10.30.3 wrangler deploy',
+	'../node_modules/.bin/wrangler deploy --env prod',
+	'cd admin && npx wrangler deploy',
+	'cd admin\nwrangler deploy',
+	'cd admin && \\\n  wrangler deploy',
+	'wrangler deploy --env dev && cd ../landing && wrangler deploy',
+	'npx wrangler versions upload --config wrangler.jsonc',
+	'wrangler secret bulk secrets.json',
+	'wrangler deploy --env ""',
+	'bash -c "wrangler deploy"',
+	'time wrangler deploy',
+	"npx wrangler d1 execute DB --remote --env prod --command 'DELETE FROM bookings'",
+	'shopify app deploy --config prod',
+	'shopify app deploy -c prod',
+	'shopify app deploy --config shopify.app.prod.toml',
+	'shopify app deploy',
+	'pnpm shopify app release --config=prod',
+	'for app in admin app landing; do pnpm --dir $app exec wrangler deploy; done',
+	'if [ -d dist ]; then npx wrangler deploy --env prod; fi',
+	'{ wrangler deploy --env prod; }',
+	'npx @shopify/cli app deploy --config prod',
+	'wrangler deploy -e=prod',
+	'env -u FOO wrangler deploy',
+	'sudo -E wrangler deploy',
+	'timeout -s KILL 60 wrangler deploy',
+	'wrangler deploy --message "status page fix"',
+	'wrangler deploy --env prod --message "get rid of banner"',
+	'wrangler versions upload --tag view --env prod',
+	'wrangler secret put list --env prod',
+	'wrangler deploy --env prod --local',
+	'wrangler deploy --env production',
+	"wrangler d1 execute DB --env prod --remote --command 'WITH x AS (SELECT 1) DELETE FROM bookings'",
+	"wrangler d1 execute DB --env prod --remote --command 'select 1' --file drop.sql",
+];
+
+const trunkPasses = [
+	'npx wrangler deploy --env dev',
+	'pnpm --dir api exec wrangler versions upload --dry-run --env prod',
+	'npx wrangler versions upload --dry-run --config wrangler.jsonc --env dev',
+	'npx wrangler deployments list --env prod',
+	'wrangler tail --env prod',
+	'pnpm exec wrangler dev --env dev',
+	'wrangler types --env dev',
+	'wrangler d1 migrations apply DB --local',
+	"npx wrangler d1 execute DB --remote --env prod --command 'SELECT count(*) FROM bookings'",
+	'wrangler d1 export DB --remote --env prod --output x.sql',
+	'shopify app deploy --config dev',
+	'shopify app config validate --config prod',
+	'git commit -m "wrangler deploy --env prod"',
+	'grep wrangler deploy docs',
+	'make deploy-dev',
+	'pnpm --dir api report:overbooked-nights prod',
+	'pnpm run deploy:dev',
+	'pnpm --dir api deploy:dev',
+	'wrangler d1 migrations list DB --env prod --remote',
+	'wrangler --env prod deployments list',
+	'wrangler kv namespace list',
+	'wrangler r2 object get bucket/key --env prod',
+	'wrangler --version',
+	'wrangler -c wrangler.jsonc dev',
+	'for app in admin app landing; do pnpm --dir $app exec wrangler deploy --env dev; done',
+];
+
+test("trunk's prod writes ask", () => {
+	for (const command of trunkProdWrites) assert.equal(decide(...bash(command))?.decision, 'ask', command);
+});
+
+test("trunk's dev writes and prod reads pass", () => {
+	for (const command of trunkPasses) assert.equal(decide(...bash(command)), null, command);
+});
+
+test('a Wrangler write with no --env asks where trunk passed, because the spec reads only --env and -e', () => {
+	for (const command of ['CLOUDFLARE_ENV=dev wrangler deploy', 'wrangler deploy --help'])
+		assert.equal(decide(...bash(command))?.decision, 'ask', command);
+});
 
 test('the guard passes the dropped asks, which are not prod writes', () => {
 	for (const command of ['git -c push.negotiate=true push', 'gh secret list', 'gh pr merge 5 --squash', 'gh api repos/catati/dev/git/refs'])
