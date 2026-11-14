@@ -147,6 +147,23 @@ test('an allow line with a date that does not exist is malformed', (t) => {
 	});
 });
 
+test('an allow line that names a repo check is left to that check', (t) => {
+	const lines = [
+		'# catati-allow(commentUse): generated file; expires 2999-01-01; approved by Shien',
+		'# catati-allow(readmeDrift): older table; expires 2000-01-01; approved by Shien',
+		'# catati-allow(versionBumpMissing): docs only',
+	];
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `${lines.join('\n')}\nKEY=\n` }, t), {
+		status: 1,
+		lines: ['env-example: example.env: env template is not named .env.example'],
+	});
+	const repoWide = 'catati-allow(commentUse): generated file; expires 2999-01-01; approved by Shien';
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': 'KEY=\n', '.catati-allow': `${repoWide}\n` }, t), {
+		status: 1,
+		lines: ['env-example: example.env: env template is not named .env.example', `allow: .catati-allow: malformed allow: ${repoWide}`],
+	});
+});
+
 test('an allow line that names no approver does not suppress its check', (t) => {
 	const unapproved = (by) => `# catati-allow(env-example): tool reads this name; expires 2999-01-01${by}\nKEY=\n`;
 	for (const by of ['', '; approved by', '; approved by ']) {

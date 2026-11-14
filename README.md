@@ -87,6 +87,8 @@ An expired or malformed allow line is a finding with the check `allow`, and it t
 A date that does not exist, such as `2026-02-31`, makes the line malformed.
 A line with no `approved by <name>` is a finding too, such as one written before the approver was required.
 
+A repo's own checks use the same format, such as `catati-allow(commentUse): <reason>; expires YYYY-MM-DD; approved by <name>`. In any file other than `.catati-allow`, `catati check` skips a line that names a check it does not have, and leaves that line to the repo check that reads it. So a misspelled check name in such a file turns off nothing and is not reported. `.catati-allow` holds only `catati check` lines, so an unknown check name there is malformed.
+
 To test the package, run `npm test`.
 The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `npm test` on every PR and on each push to `main`.
 
