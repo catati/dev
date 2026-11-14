@@ -16,6 +16,7 @@ function cleanRepo() {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
 		'.github/workflows/ci.yml': 'on: push\n',
 		Makefile: cleanMakefile,
+		'package.json': '{ "version": "1.0.0" }\n',
 		'.env.example': 'KEY=\n',
 		'web/.env.example': 'KEY=\n',
 		'.env': 'KEY=real\n',
@@ -329,6 +330,41 @@ test('make-targets also needs deploy-dev when the repo has a wrangler.jsonc', (t
 	});
 });
 
+test('version-source needs one MAJOR.MINOR.PATCH version, in the root package.json, in a repo with a wrangler.jsonc', (t) => {
+	const clean = {
+		...cleanRepo(),
+		Makefile: deployMakefile,
+		'api/wrangler.jsonc': cleanWrangler,
+		'package.json': '{ "name": "repo", "version": "2.0.0" }\n',
+		'api/package.json': '{ "name": "api" }\n',
+		'node_modules/dep/package.json': '{ "version": "1.0.0" }\n',
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const noWorker = { ...cleanRepo(), 'package.json': '{}\n', 'api/package.json': '{ "version": "1.0.0" }\n' };
+	assert.deepEqual(runCheck(noWorker, t), { status: 0, lines: [] });
+	for (const version of ['"2.0"', '"v2.0.0"', '"02.0.0"', '"2.0.0-beta"', '2']) {
+		assert.deepEqual(runCheck({ ...clean, 'package.json': `{ "version": ${version} }\n` }, t), {
+			status: 1,
+			lines: [`version-source: package.json: version ${version} is not MAJOR.MINOR.PATCH`],
+		});
+	}
+	assert.deepEqual(runCheck({ ...clean, 'package.json': '{ "name": "repo" }\n', 'landing/package.json': '{ "version": "1.0.1" }\n' }, t), {
+		status: 1,
+		lines: [
+			'version-source: package.json: has no version; add one such as "1.0.0"',
+			'version-source: landing/package.json: declares its own version; only the root package.json holds one',
+		],
+	});
+	assert.deepEqual(runCheck({ ...clean, 'package.json': undefined }, t), {
+		status: 1,
+		lines: ['version-source: package.json: file is missing'],
+	});
+	assert.deepEqual(runCheck({ ...clean, 'package.json': '{ "version": ' }, t), {
+		status: 1,
+		lines: ['version-source: package.json: cannot parse as JSON'],
+	});
+});
+
 test('resource-names flags a Wrangler resource that is not <repo>-<component> or ends in an env', (t) => {
 	const config = (names) =>
 		JSON.stringify({
@@ -360,7 +396,7 @@ test('allow lines cover the new checks in a JSONC comment and in .catati-allow',
 		...cleanRepo(),
 		Makefile: deployMakefile,
 		'wrangler.jsonc': config,
-		'package.json': JSON.stringify({ scripts: { deploy: 'wrangler deploy' } }),
+		'package.json': JSON.stringify({ version: '1.0.0', scripts: { deploy: 'wrangler deploy' } }),
 		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01; approved by Shien\n',
 	};
 	assert.deepEqual(runCheck(files, t, { origin: 'https://github.com/catati/repo' }), { status: 0, lines: [] });
