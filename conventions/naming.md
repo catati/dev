@@ -29,7 +29,6 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | A repo with a `wrangler.jsonc` has the target `deploy-dev`. | `make deploy-dev` deploys to the dev account. | `catati check` |
 | The Makefile has the target `dev`. | `make dev` runs the local dev server. | judgment |
 | A make target or package script that acts on one environment ends in it. A script that checks both has no environment in its name. | `make deploy-dev`, `pnpm deploy:dev`, `check:env` | judgment |
-| `make verify` runs `catati check`. | `make verify` fails when `.github/ISSUE_TEMPLATE/issue.yml` differs from `templates/`. | judgment |
 
 ## Versions
 
@@ -61,9 +60,9 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| A repo gets shared code as one dev dependency named `@catati/dev`, pinned in the lockfile. | `"@catati/dev"` in `devDependencies`, with its version fixed in the lockfile. | judgment |
+| A repo takes no dependency on `catati/dev`. Each `/catati:repo-setup` run fetches `catati/dev` `main` and runs `catati setup` from that copy. | No `@catati/dev` or `catati-dev` key in `package.json`. | judgment |
 | Code moves into `catati/dev` only when two or more repos need it unchanged. | A script that one repo uses stays in that repo. | judgment |
-| `catati/dev` has no reusable workflow, bot or sync job. | A repo runs `npx catati check` from its own `ci.yml`. | judgment |
+| `catati/dev` has no reusable workflow, bot or sync job. | A repo gets the standard's files from a `/catati:repo-setup` run. | judgment |
 
 ## Titles and labels
 
