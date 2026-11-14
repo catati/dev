@@ -343,11 +343,19 @@ const fakeGitHub = (pulls, origins = {}) => {
   const routes = {}
   for (const [key, pull] of Object.entries(pulls)) {
     const [repo, number] = key.toLowerCase().split('#')
-    const { headSha = HEAD, comments = [], files = [], blockedBy = [] } = pull
-    routes[`repos/${repo}/pulls/${number}`] = { head: { sha: headSha } }
-    if (blockedBy)
-      routes[`repos/${repo}/issues/${number}/dependencies/blocked_by`] =
-        blockedBy
+    const {
+      headSha = HEAD,
+      body = null,
+      state = 'open',
+      mergedAt = null,
+      comments = [],
+      files = [],
+    } = pull
+    routes[`repos/${repo}/pulls/${number}`] = { head: { sha: headSha }, body }
+    routes[`repos/${repo}/issues/${number}`] = {
+      state,
+      pull_request: { merged_at: mergedAt },
+    }
     routes[`repos/${repo}/issues/${number}/comments`] = comments.map(
       (body) => ({ body })
     )
@@ -449,91 +457,133 @@ test('merge: only an exact first line VERIFIER PASS <head> is a pass, notes may 
   assert.doesNotMatch(reason, /github-ci-cd|root posts/)
 })
 
-test('merge: refused while the pull request has an open blocked_by issue or pull request, naming each', () => {
-  const issue = (repo, number, state) => ({
-    html_url: `https://github.com/${repo}/issues/${number}`,
-    state,
-  })
-  const pr = (repo, number, state) => ({
-    html_url: `https://github.com/${repo}/pull/${number}`,
-    state,
-    pull_request: { merged_at: null },
-  })
-  const closedFiller = Array.from({ length: 150 }, (_, i) =>
-    issue('catati/dev', 1000 + i, 'closed')
-  )
+const everySpelling = (github, number) => [
+  mcpMerge(github, 'catati', 'cat-hotel', number),
+  shMerge(github, `gh pr merge ${number} --squash ${PIN}`),
+  shMerge(
+    github,
+    `gh api -X PUT repos/catati/cat-hotel/pulls/${number}/merge -f sha=${HEAD}`
+  ),
+]
+
+test('merge: refused while the Blocked by line names an open issue or pull request, naming each', () => {
   const github = fakeGitHub(
     {
       'catati/cat-hotel#7': {
         comments: [pass(HEAD)],
-        blockedBy: [
-          issue('catati/cat-hotel', 3, 'open'),
-          pr('catati/dev', 91, 'open'),
-          pr('catati/dev', 90, 'closed'),
-        ],
+        body: 'Adds the thing.\r\n\r\nBlocked by: #3, catati/dev#91, Catati/Dev#90  \r\nblocked by:#3\r\n\r\nCloses #2.',
       },
+      'catati/cat-hotel#3': { state: 'open' },
+      'catati/dev#91': { state: 'open' },
+      'catati/dev#90': { state: 'closed', mergedAt: '2026-11-14T00:00:00Z' },
+      'catati/cat-hotel#11': { body: 'Blocked by: #3' },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(github, 7), ['deny', 'deny', 'deny'])
+  const reason = shReason(github, `gh pr merge 7 ${PIN}`)
+  assert.equal(reason.match(/catati\/cat-hotel#3\b/g)?.length, 1)
+  assert.match(reason, /catati\/dev#91\b/)
+  assert.doesNotMatch(reason, /#90\b/)
+  assert.match(reason, /conventions\/issues-and-prs\.md/)
+  assert.match(shReason(github, `gh pr merge 11 ${PIN}`), /cat-hotel#3/)
+})
+
+test('merge: a Blocked by line passes once each issue is closed and each pull request merged or closed', () => {
+  const github = fakeGitHub(
+    {
       'catati/cat-hotel#8': {
         comments: [pass(HEAD)],
-        blockedBy: [
-          issue('catati/cat-hotel', 3, 'closed'),
-          pr('catati/dev', 90, 'closed'),
-        ],
+        body: 'BLOCKED BY: catati/dev#90, #4\n',
       },
+      'catati/dev#90': { state: 'closed', mergedAt: '2026-11-14T00:00:00Z' },
+      'catati/cat-hotel#4': { state: 'closed' },
       'catati/cat-hotel#9': {
         comments: [pass(HEAD)],
-        blockedBy: [...closedFiller, pr('catati/dev', 91, 'open')],
+        body: 'Nothing blocks this one.\n\nIt unblocks catati/dev#93.',
       },
-      'catati/cat-hotel#10': {
-        blockedBy: [issue('catati/cat-hotel', 3, 'open')],
+      'catati/cat-hotel#10': { comments: [pass(HEAD)] },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  for (const number of [8, 9, 10])
+    assert.deepEqual(
+      everySpelling(github, number),
+      [null, null, null],
+      `#${number}`
+    )
+})
+
+test('merge: a line that starts with Blocked by but does not parse asks', () => {
+  const bodies = [
+    'Blocked by #91',
+    'Blocked by: none',
+    'Blocked by:',
+    'Blocked by: #3 and #4',
+    'Blocked by: #3,',
+    'Blocked by: #3; #4',
+    'blocked by merging catati/dev#91 first',
+    'Blocked by: dev#91',
+    'Blocked by: #0',
+    'Blocked by: https://github.com/catati/dev/pull/91',
+    'Blocked by: #3\nBlocked by #4',
+  ]
+  const github = fakeGitHub(
+    {
+      'catati/cat-hotel#3': { state: 'closed' },
+      'catati/cat-hotel#4': { state: 'closed' },
+      'catati/dev#91': { state: 'closed' },
+      ...Object.fromEntries(
+        bodies.map((body, i) => [
+          `catati/cat-hotel#${20 + i}`,
+          { comments: [pass(HEAD)], body: `Why.\n\n${body}\n\nCloses #1.` },
+        ])
+      ),
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(github, 20), ['ask', 'ask', 'ask'])
+  bodies.forEach((body, i) =>
+    assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 20 + i), 'ask', body)
+  )
+  assert.match(
+    shReason(github, `gh pr merge 20 ${PIN}`),
+    /Blocked by: #N, owner\/repo#N/
+  )
+})
+
+test('merge: asks when an issue or pull request the Blocked by line names cannot be read', () => {
+  const github = fakeGitHub(
+    {
+      'catati/cat-hotel#7': {
+        comments: [pass(HEAD)],
+        body: 'Blocked by: #3, catati/private#5',
+      },
+      'catati/cat-hotel#3': { state: 'closed' },
+    },
+    { '/work': 'catati/cat-hotel' }
+  )
+  assert.deepEqual(everySpelling(github, 7), ['ask', 'ask', 'ask'])
+  const reason = shReason(github, `gh pr merge 7 ${PIN}`)
+  assert.match(reason, /catati\/private#5/)
+  assert.match(reason, /HTTP 404/)
+})
+
+test('merge: a Blocked by ask never replaces a missing verifier record or a wrong pin', () => {
+  const github = fakeGitHub(
+    {
+      'catati/cat-hotel#7': { body: 'Blocked by #91' },
+      'catati/cat-hotel#8': { body: 'Blocked by: catati/private#5' },
+      'catati/cat-hotel#9': {
+        comments: [pass(HEAD)],
+        body: 'Blocked by: catati/private#5',
       },
     },
     { '/work': 'catati/cat-hotel' }
   )
-  for (const command of [
-    `gh pr merge 7 --squash ${PIN}`,
-    `gh api -X PUT repos/catati/cat-hotel/pulls/7/merge -f sha=${HEAD}`,
-  ])
-    assert.equal(shMerge(github, command), 'deny', command)
-  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 7), 'deny')
-  const reason = run(github, 'mcp__github__merge_pull_request', {
-    owner: 'catati',
-    repo: 'cat-hotel',
-    pullNumber: 7,
-    expectedHeadSha: HEAD,
-  }).reason
-  assert.match(reason, /https:\/\/github\.com\/catati\/cat-hotel\/issues\/3/)
-  assert.match(reason, /https:\/\/github\.com\/catati\/dev\/pull\/91/)
-  assert.doesNotMatch(reason, /pull\/90/)
-  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 8), null)
-  assert.equal(shMerge(github, `gh pr merge 8 ${PIN}`), null)
-  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 9), 'deny')
-  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 10), 'deny')
-  assert.match(
-    run(github, 'mcp__github__merge_pull_request', {
-      owner: 'catati',
-      repo: 'cat-hotel',
-      pullNumber: 10,
-      expectedHeadSha: HEAD,
-    }).reason,
-    /issues\/3/
-  )
-})
-
-test('merge: asks when the blocked_by dependencies cannot be read', () => {
-  const github = fakeGitHub(
-    { 'catati/cat-hotel#7': { comments: [pass(HEAD)], blockedBy: null } },
-    { '/work': 'catati/cat-hotel' }
-  )
-  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 7), 'ask')
-  assert.equal(shMerge(github, `gh pr merge 7 ${PIN}`), 'ask')
-  const reason = run(github, 'mcp__github__merge_pull_request', {
-    owner: 'catati',
-    repo: 'cat-hotel',
-    pullNumber: 7,
-    expectedHeadSha: HEAD,
-  }).reason
-  assert.match(reason, /HTTP 404/)
-  assert.match(reason, /blocks it/)
+  assert.deepEqual(everySpelling(github, 7), ['deny', 'deny', 'deny'])
+  assert.deepEqual(everySpelling(github, 8), ['deny', 'deny', 'deny'])
+  assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 9, OLD), 'deny')
 })
 
 test('merge: a verified merge must pin the verified head commit', () => {

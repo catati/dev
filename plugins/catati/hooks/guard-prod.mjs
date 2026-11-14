@@ -71,6 +71,12 @@ const prodWrite = (reason) =>
   ask(`${reason} Approve only if Shien asked for this specific prod action.`)
 
 const VERIFIER_PASS = /^VERIFIER PASS ([0-9a-f]{40})$/
+const BLOCKED_BY_START = /^blocked by/i
+const BLOCKER_REF = String.raw`(?:[a-z0-9][a-z0-9-]*/[a-z0-9._-]+)?#[1-9][0-9]*`
+const BLOCKED_BY = new RegExp(
+  String.raw`^blocked by:[ \t]*(${BLOCKER_REF}(?:[ \t]*,[ \t]*${BLOCKER_REF})*)[ \t]*$`,
+  'i'
+)
 const TERRAFORM = 'catati/terraform'
 const TERRAFORM_PROD_PATHS = ['.github/workflows/']
 const GH_SHORT_VALUE_FLAGS = new Set('RXHfFqtpbA')
@@ -207,15 +213,40 @@ function readPull(api, repo, number) {
       if (batch.length < PAGE_SIZE) return items
     }
   }
+  const pull = api(`repos/${repo}/pulls/${number}`)
+  const refs = blockerRefs(pull.body ?? '', repo)
   return {
-    headSha: api(`repos/${repo}/pulls/${number}`).head.sha,
+    headSha: pull.head.sha,
     comments: all(`issues/${number}/comments`).map((c) => c.body ?? ''),
     files: all(`pulls/${number}/files`).flatMap((f) =>
       [f.filename, f.previous_filename].filter(Boolean)
     ),
-    openBlockers: all(`issues/${number}/dependencies/blocked_by`)
-      .filter((issue) => issue.state === 'open')
-      .map((issue) => issue.html_url),
+    blockedByParses: refs !== null,
+    blockers: (refs ?? []).map((ref) => readBlocker(api, ref)),
+  }
+}
+
+function blockerRefs(body, repo) {
+  const refs = []
+  for (const line of body.split(/\r?\n/)) {
+    if (!BLOCKED_BY_START.test(line)) continue
+    const list = BLOCKED_BY.exec(line)?.[1]
+    if (!list) return null
+    for (const ref of list.split(',')) {
+      const [other, number] = ref.trim().split('#')
+      refs.push(`${other || repo}#${number}`)
+    }
+  }
+  return distinct(refs)
+}
+
+function readBlocker(api, ref) {
+  const [repo, number] = ref.split('#')
+  try {
+    const { state } = api(`repos/${repo}/issues/${number}`)
+    return { ref, open: state !== 'closed' }
+  } catch (error) {
+    return { ref, error: error.message }
   }
 }
 
@@ -260,9 +291,10 @@ function mergeDecision(
       `The guard could not read pull request ${repo ?? cwd}#${number} from GitHub (${error.message}), so it cannot confirm a verifier PASS at the head commit or that no open issue or pull request blocks it. Approve only after you check both yourself.`
     )
   }
-  if (pull.openBlockers.length)
+  const open = pull.blockers.filter((b) => b.open).map((b) => b.ref)
+  if (open.length)
     return deny(
-      `${slug}#${number} is blocked by ${pull.openBlockers.join(', ')}, which GitHub records as open blocked_by dependencies. Merge only after each one is merged or closed (${MERGE_RULES}).`
+      `${slug}#${number} names ${open.join(', ')} on its "Blocked by:" line, and each is still open. Merge only after each one is merged or closed (${MERGE_RULES}).`
     )
   if (!verifierPassed(pull))
     return deny(
@@ -272,14 +304,24 @@ function mergeDecision(
     return deny(
       `${slug}#${number} is verified at ${pull.headSha}, but this merge ${pin ? `pins ${pin}` : 'pins no head commit'}, so a push after the check could merge an unverified commit. Add ${addPin(pull.headSha)}.`
     )
-  if (
+  const unread = pull.blockers.filter((b) => b.error)
+  return combine([
+    !pull.blockedByParses &&
+      ask(
+        `${slug}#${number} has a line that starts with "Blocked by" but does not read as "Blocked by: #N, owner/repo#N", so the guard cannot tell what must merge or close first. Fix that line in the pull request body, or approve only after you check the merge order yourself.`
+      ),
+    unread.length &&
+      ask(
+        `${slug}#${number} names ${unread.map((b) => `${b.ref} (${b.error})`).join(', ')} on its "Blocked by:" line, and the guard could not read them from GitHub, so it cannot confirm each one is merged or closed. Approve only after you check them yourself.`
+      ),
     slug === TERRAFORM &&
-    pull.files.some((f) => TERRAFORM_PROD_PATHS.some((p) => f.startsWith(p)))
-  )
-    return prodWrite(
-      `Merging ${slug}#${number} changes .github/workflows/, and a workflow change can make a merge apply production. Read the workflow diff first.`
-    )
-  return allow
+      pull.files.some((f) =>
+        TERRAFORM_PROD_PATHS.some((p) => f.startsWith(p))
+      ) &&
+      prodWrite(
+        `Merging ${slug}#${number} changes .github/workflows/, and a workflow change can make a merge apply production. Read the workflow diff first.`
+      ),
+  ])
 }
 
 function shortCluster(arg, next) {
