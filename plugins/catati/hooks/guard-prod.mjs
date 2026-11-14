@@ -9,6 +9,8 @@ const ACCOUNTS = {
 }
 const LITERAL_METHOD =
   /^(?:^|[^\w$])(['"]?)method\1\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE)\2(?=\s*[,}])/
+const REQUEST_OPENS_WITH_METHOD =
+  /\bcloudflare\.request\(\s*\{\s*(['"]?)method\1\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE)\2(?=\s*[,}])/g
 const LITERAL_PATH =
   /^(?:^|[^\w$])(['"]?)path\1\s*:\s*(?:'([^'\\\n]*)'|"([^"\\\n]*)"|`([^`\\]*)`)(?=\s*[,}])/
 const OPAQUE_CODE = [
@@ -116,8 +118,15 @@ const API_ROUTINE_PULL_WRITES = [
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/comments\/\d+\/replies$/,
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/ccr\/(ready_for_review|convert_to_draft|comments\/\d+\/(un)?resolve)$/,
 ]
-const ACTIONS_WRITE_ROUTE = /^repos\/[^/]+\/[^/]+\/(dispatches$|actions(\/|$))/
-const ACTIONS_URL = /\/repos\/[^/\s]+\/[^/\s]+\/(dispatches|actions\/)/i
+const ACTIONS_WRITE_ROUTE =
+  /^(repos\/[^/]+\/[^/]+|repositories\/\d+)\/(dispatches$|actions(\/|$)|check-(suites|runs)\/[^/]+\/rerequest$)/
+const GITHUB_API_URL = /^(?:https?:\/\/)?api\.github\.com(?::\d+)?(\/[^\s?#]*)/i
+const GRAPHQL_RUN_WORD = /rerequest|dispatch|workflow|deployment|approve|rerun/i
+const HTTP_CLIENTS = new Set(['curl', 'wget', 'http', 'https', 'xh', 'xhs'])
+const CURL_VALUE_LETTERS = new Set('AbcCdDeEFHKmoPQrtTuUwxXyYz')
+const GH_ALIAS = ask(
+  'A gh alias can run any gh command or shell text later, so the guard cannot judge what it runs. Run the command itself.'
+)
 const GH_CHANGES_RUN = [
   ['workflow', 'run'],
   ['run', 'rerun'],
@@ -467,6 +476,9 @@ function ghApiDecision(args, context) {
   const target = routes
     .map((route) => route !== null && API_MERGE_ROUTE.exec(route))
     .find(Boolean)
+  const mutation = /\bmutation\b/i.test(fields.join(' '))
+  if (routes.includes('graphql') && mutation && GRAPHQL_RUN_WORD.test(fields.join(' ')))
+    return WORKFLOW_RUN
   if (routes.includes('graphql'))
     return graphqlUnread(args, fields) ||
       (/\bmutation\b/i.test(fields.join(' ')) &&
@@ -519,9 +531,11 @@ function ghDecision(rawArgs, context) {
   const first = ghCommandWord(args, 0)
   if (UNKNOWN_WORD.test(args[first] ?? '')) return UNKNOWN_SUBCOMMAND
   if (args[first] === 'api') return ghApiDecision(without(args, first), context)
-  if (!['pr', 'workflow', 'run'].includes(args[first])) return allow
+  if (!['pr', 'workflow', 'run', 'alias'].includes(args[first])) return allow
   const second = ghCommandWord(args, first + 1)
   if (UNKNOWN_WORD.test(args[second] ?? '')) return UNKNOWN_SUBCOMMAND
+  if (args[first] === 'alias' && ['set', 'import'].includes(args[second]))
+    return GH_ALIAS
   const changesRun = GH_CHANGES_RUN.some(
     ([group, verb]) => args[first] === group && args[second] === verb
   )
@@ -557,25 +571,55 @@ function gitRunsString(args, words) {
     : allow
 }
 
-function curlMethods(args) {
-  const methods = flagValues(args, '--request', '-X')
+function curlOptions(args) {
+  const options = { methods: flagValues(args, '--request'), data: false, upload: false }
   args.forEach((arg, i) => {
-    const cluster = /^-[a-zA-Z]+X(.*)$/.exec(arg)
-    if (cluster && !arg.startsWith('-X'))
-      methods.push(cluster[1] || (args[i + 1] ?? ''))
+    if (/^--(data|json|form|config)/.test(arg)) options.data = true
+    if (/^--upload-file(=|$)/.test(arg)) options.upload = true
+    if (!/^-[^-]/.test(arg)) return
+    for (let at = 1; at < arg.length; at += 1) {
+      const letter = arg[at]
+      if (!CURL_VALUE_LETTERS.has(letter)) continue
+      if (letter === 'X') options.methods.push(arg.slice(at + 1) || (args[i + 1] ?? ''))
+      if ('dFK'.includes(letter)) options.data = true
+      if (letter === 'T') options.upload = true
+      return
+    }
   })
-  return methods
+  return options
 }
 
-function curlWrites(args) {
-  return (
-    curlMethods(args).some(
-      (method) => !READ_METHODS.has(method.toUpperCase())
-    ) ||
-    args.some((arg) =>
-      /^(-[dFT]|--data|--json|--form|--upload-file)/.test(arg)
+const curlMethods = (args) => curlOptions(args).methods
+
+function httpWrites(name, args) {
+  const writesMethod = (method) => !READ_METHODS.has(method.toUpperCase())
+  if (name === 'curl') {
+    const { methods, data, upload } = curlOptions(args)
+    return data || upload || methods.some(writesMethod)
+  }
+  if (name === 'wget')
+    return (
+      args.some((arg) =>
+        /^(--(post|body)-(data|file)|--execute|-e)(=|$)/.test(arg)
+      ) || flagValues(args, '--method').some(writesMethod)
     )
+  const words = args.filter((arg) => !arg.startsWith('-'))
+  const method = /^[A-Za-z]+$/.test(words[0] ?? '') ? words[0] : null
+  return (
+    (method !== null && writesMethod(method)) ||
+    args.some((arg) => /^(--form|-f|--raw|--multipart)(=|$)/.test(arg)) ||
+    words.some((word) => /^[^=:@/]+(:=|=(?!=)|@)/.test(word))
   )
+}
+
+function githubRunTarget(args) {
+  return args.some((arg) => {
+    const path = GITHUB_API_URL.exec(arg)?.[1]
+    if (path === undefined) return false
+    if (path.includes('%')) return true
+    const route = apiRoute(path)
+    return route === null || ACTIONS_WRITE_ROUTE.test(route)
+  })
 }
 
 function curlPut(args) {
@@ -631,10 +675,16 @@ function readsStdin(item) {
   if (item.kind !== 'segment') return false
   const { name, args } = program(tokens(item.text))
   if (STDIN_RUNNERS.has(name)) return nestedCommands(name, args) === null
+  if (SOURCES.has(name)) return args[0] === '<' || STDIN_FILES.has(args[0])
+  if (!SHELLS.has(name) || nestedCommands(name, args) !== null) return false
+  const { readsStdin: stdinFlag, operand } = shellOptions(args)
+  const file = args[operand]
   return (
-    SHELLS.has(name) &&
-    nestedCommands(name, args) === null &&
-    args.every((arg) => arg.startsWith('-') || arg === '<')
+    stdinFlag ||
+    file === undefined ||
+    file === '<' ||
+    file === '-' ||
+    STDIN_FILES.has(file)
   )
 }
 
@@ -671,8 +721,12 @@ function requestShape(code) {
   const requests = code.match(/\bcloudflare\b/g)?.length ?? 0
   const plainRequests = code.match(/\bcloudflare\.request\(/g)?.length ?? 0
   if (requests !== plainRequests) return null
+  const opened = code.match(REQUEST_OPENS_WITH_METHOD)?.length ?? 0
   return {
-    methods: literalValues(code, 'method', [LITERAL_METHOD, 3], requests),
+    methods:
+      opened === requests
+        ? literalValues(code, 'method', [LITERAL_METHOD, 3], requests)
+        : null,
     paths: literalValues(code, 'path', [LITERAL_PATH, 2], requests),
     accountOnlyInPaths: ['accountId', 'account_id'].every(
       (name) =>
@@ -693,11 +747,7 @@ function devPath(path) {
   if (interpolations.some((part) => !DEV_ACCOUNT_SEGMENTS.has(part)))
     return false
   const [, root, account] = path.split('/')
-  return (
-    root.toLowerCase() !== 'accounts' ||
-    account === undefined ||
-    DEV_ACCOUNT_SEGMENTS.has(account)
-  )
+  return root.toLowerCase() === 'accounts' && DEV_ACCOUNT_SEGMENTS.has(account)
 }
 
 function decideCloudflareWrite(accountId, code, shape) {
@@ -744,6 +794,36 @@ const WRANGLER_BOOLEAN_FLAGS = new Set([
   '--minify',
   '--keep-vars',
 ])
+const WRANGLER_VALUE_FLAGS = new Set([
+  '--env',
+  '-e',
+  '--config',
+  '-c',
+  '--cwd',
+  '--name',
+  '--command',
+  '--file',
+  '--output',
+  '--message',
+  '--tag',
+  '--var',
+  '--define',
+  '--compatibility-date',
+  '--compatibility-flags',
+  '--persist-to',
+  '--port',
+  '--ip',
+  '--format',
+  '--search',
+  '--status',
+  '--header',
+  '--method',
+  '--sampling-rate',
+  '--binding',
+  '--database',
+  '--account-id',
+  '--log-level',
+])
 const LOCAL_GROUPS = new Set(['d1', 'kv', 'r2'])
 const RUNNERS = new Set(['pnpm', 'yarn', 'npm', 'bun', 'npx', 'pnpx', 'bunx'])
 const RUNNER_VERBS = new Set(['exec', 'dlx', 'x'])
@@ -767,7 +847,37 @@ const PREFIX_VALUE_FLAGS = new Map([
   ['time', ['-f', '--format', '-o', '--output']],
   ['nohup', []],
   ['command', []],
+  ['builtin', []],
 ])
+const PREFIX_LONG_VALUE_FLAGS = new Set([
+  '--user',
+  '--group',
+  '--chdir',
+  '--prompt',
+  '--host',
+  '--role',
+  '--type',
+  '--close-from',
+  '--chroot',
+  '--other-user',
+  '--signal',
+  '--kill-after',
+  '--adjustment',
+  '--unset',
+  '--input',
+  '--output',
+  '--error',
+  '--format',
+])
+
+function prefixFlagWidth(flag, valueFlags) {
+  if (valueFlags.includes(flag)) return 2
+  if (flag.startsWith('--'))
+    return PREFIX_LONG_VALUE_FLAGS.has(flag) ? 2 : 1
+  for (let at = 1; at < flag.length; at += 1)
+    if (valueFlags.includes(`-${flag[at]}`)) return at === flag.length - 1 ? 2 : 1
+  return 1
+}
 const ENV_SPLIT_STRING = /^(?:-S|--split-string)=?(.*)$/
 const WATCH_VALUE_FLAGS = new Set(['-n', '--interval', '-q', '--equexit'])
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'fish', 'csh', 'tcsh'])
@@ -804,8 +914,13 @@ const OPAQUE_WRAPPERS = new Set([
   'unbuffer',
   'gtimeout',
   'kubectl',
+  'trap',
+  'coproc',
 ])
 const STDIN_RUNNERS = new Set(['at', 'batch'])
+const SOURCES = new Set(['source', '.'])
+const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
+const UNREADABLE_PROGRAM = /[$`*?{}]|\[.*\]/
 const WRANGLER_READS = [
   'dev',
   'types',
@@ -889,7 +1004,7 @@ function bodySubstitutions(body) {
 function heredocItems({ reader, quoted }, body) {
   if (HEREDOC_READERS.has(reader)) return [{ kind: 'substitution', text: body }]
   const interpreted = INTERPRETER.test(reader ?? '')
-    ? stringLiterals(body).map((text) => ({ kind: 'substitution', text }))
+    ? stringLiterals(body).map((text) => ({ kind: 'guess', text }))
     : []
   const data = { kind: 'data', text: body }
   const substitutions = quoted ? [] : bodySubstitutions(body)
@@ -1143,16 +1258,17 @@ function program(input) {
   let i = 0
   while (i < words.length) {
     const word = words[i]
+    const base = word.replace(/^\\/, '').split('/').pop()
     const assignment = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(word)
     if (assignment) {
       env[assignment[1]] = assignment[2]
       i += 1
     } else if (KEYWORDS.has(word)) i += 1
-    else if (PREFIX_VALUE_FLAGS.has(word)) {
-      const valueFlags = PREFIX_VALUE_FLAGS.get(word)
+    else if (PREFIX_VALUE_FLAGS.has(base)) {
+      const valueFlags = PREFIX_VALUE_FLAGS.get(base)
       i += 1
       while (i < words.length && words[i].startsWith('-')) {
-        const splitString = word === 'env' && ENV_SPLIT_STRING.exec(words[i])
+        const splitString = base === 'env' && ENV_SPLIT_STRING.exec(words[i])
         if (splitString) {
           const inline = splitString[1]
           words.splice(
@@ -1162,11 +1278,11 @@ function program(input) {
           )
           break
         }
-        i += valueFlags.includes(words[i]) ? 2 : 1
+        i += prefixFlagWidth(words[i], valueFlags)
       }
-      if (word === 'timeout') i += 1
-    } else if (word === 'corepack') i += 1
-    else if (RUNNERS.has(word.replace(/@.*$/, ''))) {
+      if (base === 'timeout') i += 1
+    } else if (base === 'corepack') i += 1
+    else if (RUNNERS.has(base.replace(/@.*$/, ''))) {
       i += 1
       while (i < words.length) {
         const next = words[i]
@@ -1180,7 +1296,7 @@ function program(input) {
   const name = raw.startsWith('@shopify/cli')
     ? 'shopify'
     : raw.split('/').pop().replace(/@.*$/, '')
-  return { env, name, args: words.slice(i + 1) }
+  return { env, raw, name, args: words.slice(i + 1) }
 }
 
 function flagValues(args, long, short) {
@@ -1207,12 +1323,13 @@ function flagValue(args, long, short) {
   return flagValues(args, long, short)[0] ?? null
 }
 
-function positionals(args) {
+function positionals(args, unknownTakesValue) {
   const words = []
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]
     if (!arg.startsWith('-')) words.push(arg)
-    else if (!arg.includes('=') && !WRANGLER_BOOLEAN_FLAGS.has(arg)) i += 1
+    else if (arg.includes('=') || WRANGLER_BOOLEAN_FLAGS.has(arg)) continue
+    else if (unknownTakesValue || WRANGLER_VALUE_FLAGS.has(arg)) i += 1
   }
   return words
 }
@@ -1221,7 +1338,12 @@ const startsWith = (words, prefix) =>
   prefix.every((word, index) => words[index] === word)
 
 function wranglerReadOnly(args) {
-  const words = positionals(args)
+  return [true, false].every((unknownTakesValue) =>
+    wranglerReadsWith(args, positionals(args, unknownTakesValue))
+  )
+}
+
+function wranglerReadsWith(args, words) {
   if (['--dry-run', '--help', '--version', '-v'].some((f) => args.includes(f)))
     return true
   if (
@@ -1230,11 +1352,12 @@ function wranglerReadOnly(args) {
     !args.includes('--remote')
   )
     return true
+  if (words.length === 0) return true
   if (WRANGLER_READS.some((prefix) => startsWith(words, prefix))) return true
   const commands = flagValues(args, '--command')
   return (
     startsWith(words, ['d1', 'execute']) &&
-    !args.some((arg) => arg === '--file' || arg.startsWith('--file=')) &&
+    !args.some((arg) => /^--file(=|$)/i.test(arg)) &&
     commands.length > 0 &&
     commands.every(isPlainSqlRead)
   )
@@ -1279,21 +1402,28 @@ function shopifyDecision(args) {
   )
 }
 
-function shellCommandString(args) {
-  let readsString = false
+function shellOptions(args) {
+  const options = { readsString: false, readsStdin: false }
   let i = 0
   while (i < args.length && /^[-+]/.test(args[i]) && args[i] !== '--') {
     const arg = args[i]
     i += 1
+    if (arg === '-') return { ...options, readsStdin: true, operand: i }
     if (arg.startsWith('--')) {
       if (SHELL_LONG_VALUE_FLAGS.has(arg)) i += 1
     } else {
-      if (arg.startsWith('-') && arg.includes('c')) readsString = true
+      if (arg.startsWith('-') && arg.includes('c')) options.readsString = true
+      if (arg.startsWith('-') && arg.includes('s')) options.readsStdin = true
       if (/[oO]$/.test(arg)) i += 1
     }
   }
   if (args[i] === '--') i += 1
-  return readsString ? args.slice(i).join(' ') : null
+  return { ...options, operand: i }
+}
+
+function shellCommandString(args) {
+  const { readsString, operand } = shellOptions(args)
+  return readsString ? args.slice(operand).join(' ') : null
 }
 
 function wordSuffixes(args) {
@@ -1310,7 +1440,7 @@ function nestedCommands(name, args) {
       i += WATCH_VALUE_FLAGS.has(args[i]) ? 2 : 1
     return [args.slice(i).join(' ')]
   }
-  if (OPAQUE_WRAPPERS.has(name)) return wordSuffixes(args)
+  if (OPAQUE_WRAPPERS.has(name)) return null
   if (STDIN_RUNNERS.has(name)) {
     const here = hereString(args)
     return here === null ? null : [here]
@@ -1338,7 +1468,7 @@ function programDecision(words, { env, name, args }, context) {
   if (name === 'git') return gitRunsString(args, words)
   if (name === 'curl' && PULLS_PATH.test(words) && curlPut(args))
     return wrappedMerge('gh merge', name)
-  if (name === 'curl' && ACTIONS_URL.test(words) && curlWrites(args))
+  if (HTTP_CLIENTS.has(name) && githubRunTarget(args) && httpWrites(name, args))
     return WORKFLOW_RUN
   if (name === 'wrangler') return wranglerDecision(args, env)
   if (name === 'shopify') return shopifyDecision(args)
@@ -1353,18 +1483,32 @@ function decideSegment(segment, context) {
   const words = tokens(segment)
   const parsed = program(words)
   const nested = nestedCommands(parsed.name, parsed.args)
-  const interpreted = INTERPRETER.test(parsed.name)
-    ? parsed.args.flatMap(stringLiterals)
-    : []
+  const opaque = OPAQUE_WRAPPERS.has(parsed.name)
+  const guessed = [
+    ...(opaque ? wordSuffixes(parsed.args) : []),
+    ...(INTERPRETER.test(parsed.name)
+      ? parsed.args.flatMap(stringLiterals)
+      : []),
+  ]
+  const unreadable = !context.guessing && UNREADABLE_PROGRAM.test(parsed.raw)
+  let direct = []
+  if (nested !== null)
+    direct = nested.map((command) => decideCommand(command, context))
+  else if (!opaque) direct = [programDecision(words.join(' '), parsed, context)]
   return combine([
     substitutedMerge(segment),
     assignedMerge(parsed.env),
-    ...(nested === null
-      ? [programDecision(words.join(' '), parsed, context)]
-      : nested.map((command) => decideCommand(command, context))),
-    ...interpreted.map((command) => decideCommand(command, context)),
+    unreadable &&
+      ask(
+        `The program word \`${parsed.raw}\` comes from a variable, a substitution, a glob or a brace, so the guard cannot tell what runs. Write the program name out.`
+      ),
+    ...direct,
+    ...guessed.map((command) => guess(command, context)),
   ])
 }
+
+const guess = (command, context) =>
+  decideCommand(command, { ...context, guessing: true })
 
 function combine(results) {
   const reasons = (decision) => [
@@ -1398,14 +1542,14 @@ function decideCommand(command, context) {
   const outer = []
   let current = context
   const results = [stdinShell(items, command)]
-  for (const text of shellFedText(items))
-    results.push(decideCommand(text, context))
+  for (const text of shellFedText(items)) results.push(guess(text, context))
   for (const item of items) {
     if (item.kind === '(') outer.push(current)
     else if (item.kind === ')') current = outer.pop() ?? current
     else if (item.kind === 'substitution')
       results.push(decideCommand(item.text, current))
     else if (item.kind === 'verdict') results.push(item.result)
+    else if (item.kind === 'guess') results.push(guess(item.text, current))
     else if (item.kind === 'segment') {
       current = movedContext(current, item)
       results.push(decideSegment(item.text, current))

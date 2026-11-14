@@ -182,8 +182,14 @@ test('every prod-write prompt says Shien must ask, the unknown-account prompt do
 })
 
 test('Cloudflare: writes are judged by account, not resource name', () => {
-  assert.equal(cf(DEV, call('POST', '/d1/database/cat-hotel/query')), null)
-  assert.equal(cf(DEV, call('PUT', '/workers/scripts/cat-hotel-admin')), null)
+  assert.equal(
+    cf(DEV, call('POST', `/accounts/${DEV}/d1/database/cat-hotel/query`)),
+    null
+  )
+  assert.equal(
+    cf(DEV, call('PUT', `/accounts/${DEV}/workers/scripts/cat-hotel-admin`)),
+    null
+  )
   assert.equal(cf(PROD, call('PUT', '/workers/scripts/cat-hotel-admin')), 'ask')
   assert.match(
     decide('mcp__cloudflare__execute', {
@@ -957,10 +963,10 @@ test('merge: a gh merge handed to a shell, eval or xargs as text asks', () => {
     "node <<'JS'\nrequire('child_process').execSync('gh pr merge 7')\nJS":
       'deny',
     "bash <(echo 'gh pr merge 7 --squash')": 'deny',
-    'source <(echo gh pr merge 7 --squash)': 'ask',
+    'source <(echo gh pr merge 7 --squash)': 'deny',
     'eval "$(echo gh pr merge 7 --squash)"': 'ask',
     'bash -c "$(echo gh pr merge 7 --squash)"': 'ask',
-    "echo 'gh pr merge 7 --squash' | sh /dev/stdin": 'ask',
+    "echo 'gh pr merge 7 --squash' | sh /dev/stdin": 'deny',
     "echo 'pr merge 7 --squash' | xargs gh": 'ask',
     "echo 'gh pr merge 7 --squash' | xargs -I{} sh -c '{}'": 'ask',
     "GIT_EDITOR='gh pr merge 7 --squash #' git commit --amend": 'ask',
@@ -1119,6 +1125,7 @@ test('Bash: a prod write behind any wrapper, shell flag cluster or backtick asks
 test('Bash: a wrapper around a dev or read command still passes', () => {
   for (const command of [
     'echo x | xargs grep deploy-prod',
+    'git ls-files | xargs grep -n wrangler',
     'ssh host ls /srv',
     'docker run --rm img wrangler deploy --env dev',
     'bash -euo pipefail -c "npx wrangler deploy --env dev"',
@@ -1211,7 +1218,10 @@ test('Cloudflare: on Catati a call passes only when every method is a literal GE
 test('Cloudflare: a computed method passes on catati-dev and asks for a legacy -dev name on Catati', () => {
   const computed = (path) =>
     `async () => { const m = 'PO'+'ST'; return cloudflare.request({ method: m, path: '${path}' }) }`
-  assert.equal(cf(DEV, computed('/workers/scripts/cat-hotel-api')), null)
+  assert.equal(
+    cf(DEV, computed(`/accounts/${DEV}/workers/scripts/cat-hotel-api`)),
+    null
+  )
   assert.equal(cf(DEV, computed('/zones/abc/dns_records')), 'ask')
   assert.equal(
     cf(PROD, computed('/workers/scripts/catati-cat-hotel-api-dev')),
@@ -1349,7 +1359,6 @@ test('Cloudflare: a catati-dev write passes only when each path names the dev ac
   for (const path of [
     '`/accounts/${accountId}/workers/scripts/cat-hotel-api`',
     "'/accounts/028a7270e2ad8a208cd6b01800f363f3/d1/database/cat-hotel/query'",
-    "'/d1/database/cat-hotel/query'",
   ])
     assert.equal(devWrite(path), null, path)
 })
@@ -1429,4 +1438,158 @@ test('Bash: a prod write fed to a shell, interpreter or process wrapper asks', (
     'flock /tmp/lock make deploy-dev',
   ])
     assert.equal(sh(command), null, command)
+})
+
+test('Cloudflare: a catati-dev write outside /accounts/<dev> asks', () => {
+  for (const path of [
+    "'/zones'",
+    "'/memberships/abc'",
+    "'/user/tokens'",
+    "'/d1/database/cat-hotel/query'",
+    "'/accounts'",
+  ])
+    assert.equal(devWrite(path), 'ask', path)
+})
+
+test('Cloudflare: on Catati each request must open with a literal GET method', () => {
+  for (const code of [
+    `async () => { const a = { method: 'GET' }; await cloudflare.request({ method: 'GET', path: '/accounts' }); return cloudflare.request({ path: ${workerPath}, body: 'x' }) }`,
+    `async () => { const o = { method: 'GET', path: ${workerPath} }; return cloudflare.request(o) }`,
+  ])
+    assert.equal(cf(PROD, code), 'ask', code)
+  assert.equal(
+    cf(
+      PROD,
+      `async () => (await cloudflare.request({ "method": "GET", path: ${workerPath} })).result.map((s) => s.id)`
+    ),
+    null
+  )
+})
+
+const GH_RUN_PATHS = [
+  'https://api.github.com/repos/catati/cat-hotel/actions/workflows/deploy.yml/dispatches',
+  'https://api.github.com/repositories/1/actions/workflows/2/dispatches',
+  'https://api.github.com/repos/catati/cat-hotel/%61ctions/runs/1/rerun',
+  'https://API.github.com:443/repos/catati/cat-hotel/actions/runs/1/approve',
+  'api.github.com/repos/catati/cat-hotel/check-suites/1/rerequest',
+  'https://api.github.com/repos/catati/cat-hotel/check-runs/1/rerequest',
+]
+
+test('Bash: an HTTP client write to a GitHub Actions or check rerun path asks', () => {
+  for (const url of GH_RUN_PATHS)
+    for (const command of [
+      `curl -sd '{"ref":"main"}' ${url}`,
+      `curl -sXPOST ${url}`,
+      `curl -Xd POST ${url}`,
+      `curl -s --data-raw '{}' ${url}`,
+      `curl --json '{}' ${url}`,
+      `wget --post-data='{"ref":"main"}' ${url}`,
+      `wget --method=POST ${url}`,
+      `http POST ${url} ref=main`,
+      `https POST ${url}`,
+      `http ${url} ref=main`,
+    ])
+      assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    'gh api -X POST repos/catati/cat-hotel/check-suites/1/rerequest',
+    'gh api -X POST repos/catati/cat-hotel/check-runs/1/rerequest',
+    'gh api -X POST repositories/1/actions/runs/2/rerun',
+    `gh api graphql -f query='mutation { rerequestCheckSuite(input:{repositoryId:"x",checkSuiteId:"y"}) { clientMutationId } }'`,
+    "gh alias set d 'workflow run deploy.yml'",
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    'curl -s https://api.github.com/repos/catati/cat-hotel/actions/runs',
+    'curl -sSL https://api.github.com/repos/catati/cat-hotel/check-runs/1',
+    'wget -qO- https://api.github.com/repos/catati/cat-hotel/actions/runs',
+    'http https://api.github.com/repos/catati/cat-hotel/actions/runs per_page==5',
+    'curl -sd x=1 https://example.com/actions/runs/1/rerun',
+  ])
+    assert.equal(sh(command), null, command)
+})
+
+test('Bash: a wrapper given by full path or with a value flag in a cluster is unwrapped', () => {
+  for (const write of PROD_WRITES)
+    for (const command of [
+      `/usr/bin/env ${write}`,
+      `/usr/bin/sudo ${write}`,
+      `/usr/bin/timeout 5 ${write}`,
+      `/usr/bin/nice ${write}`,
+      `/usr/bin/nice -n 5 ${write}`,
+      `sudo -Eu root ${write}`,
+      `sudo -iu deploy ${write}`,
+      `timeout -sKILL 5 ${write}`,
+      `timeout -vs KILL 5 ${write}`,
+      `/usr/local/bin/xargs -n 1 ${write}`,
+    ])
+      assert.equal(sh(command), 'ask', command)
+  assert.equal(sh('/usr/bin/env npx wrangler deploy --env dev'), null)
+  assert.equal(sh('sudo -Eu root make deploy-dev'), null)
+})
+
+test('Bash: a program word the guard cannot read asks, as do trap, builtin and coproc with a prod payload', () => {
+  for (const command of [
+    '$"make" deploy-prod',
+    'W=make; $W deploy-prod',
+    'W=npx; $W wrangler deploy --env prod',
+    '"$(echo make)" deploy-prod',
+    '{make,} deploy-prod',
+    'ma?e deploy-prod',
+    'mak* deploy-prod',
+    "trap 'make deploy-prod' EXIT",
+    "trap 'npx wrangler deploy --env prod' EXIT",
+    "builtin eval 'make deploy-prod'",
+    'coproc make deploy-prod',
+    'coproc job { npx wrangler deploy --env prod; }',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    'T=deploy-dev; make $T',
+    '[ -d dist ] && echo yes',
+    'for f in *.md; do grep -l deploy "$f"; done',
+    "trap 'rm -f /tmp/x' EXIT",
+    'echo "$(date)"',
+    'X=$(git rev-parse HEAD) && echo $X',
+  ])
+    assert.equal(sh(command), null, command)
+})
+
+test('Bash: text fed to bash -s, /dev/stdin, source or a process substitution is read as commands', () => {
+  for (const write of PROD_WRITES)
+    for (const command of [
+      `echo '${write}' | bash -s x`,
+      `echo '${write}' | bash /dev/stdin`,
+      `echo '${write}' | sh -`,
+      `echo '${write}' | source /dev/stdin`,
+      `echo '${write}' | . /dev/fd/0`,
+      `source <(echo '${write}')`,
+      `. <(echo '${write}')`,
+      `echo '${write}' | bash -c "$(cat)"`,
+    ])
+      assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    "echo 'make deploy-dev' | bash -s x",
+    "source <(echo 'export A=1')",
+    "cat <(echo 'make deploy-prod')",
+  ])
+    assert.equal(sh(command), null, command)
+})
+
+test('Bash: a prod d1 --command with RETURNING, load_extension or a --file of any case asks', () => {
+  for (const sql of [
+    "'SELECT load_extension(1)'",
+    "'SELECT 1 RETURNING *'",
+    "'SELECT 1' --File x.sql",
+    "'SELECT 1' --FILE=x.sql",
+  ])
+    assert.equal(d1(sql), 'ask', sql)
+})
+
+test('Bash: a Wrangler flag the guard does not know cannot hide the subcommand', () => {
+  for (const command of [
+    'npx wrangler --x-provision delete dev --env prod',
+    'npx wrangler --experimental-remote-bindings deploy dev --env prod',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  assert.equal(sh('npx wrangler --config wrangler.jsonc tail --env prod'), null)
 })
