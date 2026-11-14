@@ -25,11 +25,18 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| The Makefile has the targets `install`, `test`, `e2e`, `verify`, `lint` and `help`. | `make e2e`, not `make e2e-test`. | `catati check` |
+| The Makefile has the targets `install`, `test`, `e2e`, `verify`, `lint`, `help`, `format` and `staged-check`. The template git hooks call `staged-check` before a commit and `lint` before a push, and name `format` as the fix. | `make e2e`, not `make e2e-test`. | `catati check` |
 | A repo with a `wrangler.jsonc` has the target `deploy-dev`. | `make deploy-dev` deploys to the dev account. | `catati check` |
 | The Makefile has the target `dev`. | `make dev` runs the local dev server. | judgment |
 | A make target or package script that acts on one environment ends in it. A script that checks both has no environment in its name. | `make deploy-dev`, `pnpm deploy:dev`, `check:env` | judgment |
 | `make verify` runs `catati check`. | `make verify` fails when `.github/ISSUE_TEMPLATE/issue.yml` differs from `templates/`. | judgment |
+
+## Versions
+
+| Rule | Example | Check |
+| --- | --- | --- |
+| A repo with a `wrangler.jsonc` has one semantic version, `MAJOR.MINOR.PATCH`, as `version` in its root `package.json`. No other `package.json` outside `node_modules` declares a `version`. | `"version": "2.1.3"` in the root `package.json`, and none in `api/package.json` | `catati check` |
+| The PR that ships a change bumps the version: MAJOR for a change that breaks a user or a contract, MINOR for a new feature, PATCH for a fix. | A new booking field is MINOR. | A repo check, because which paths ship differs per repo. cat-hotel's `versionBumpMissing` in `.github/scripts/repo-rules.mjs` is the reference. |
 
 ## CI workflows and checks
 
@@ -63,19 +70,21 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | Rule | Example | Check |
 | --- | --- | --- |
 | An issue title is `<area>: <outcome>`. PR titles follow pstack. | `conventions: Write the shared naming, branch and PR rules` | judgment |
-| The status labels are `todo`, `doing`, `review` and `blocked`. | `doing`, not `in-progress`. | judgment |
+| The status labels are `todo`, `doing`, `review` and `blocked`. `templates/labels.json` holds their names, colours and descriptions. | `doing`, not `in-progress`. | judgment |
 
 ## Exceptions
 
-| Name | Rule it breaks | Ends when |
-| --- | --- | --- |
-| Firebase projects `catati-app` and `catati-cat-hotel*` | `<repo>-<component>` | Firebase is removed. |
-| `agents/.prod.env` | `.env.example` | No end date. |
-| Repo `catati-horizon` | The repo name is the stem. | The Horizon spike reports. |
-| Shopify stores `catati-dev-store` and `3dd4ee` | `<repo>-<env>` | No end date. Shopify fixes store domains. |
-| `cat-hotel` prod Workers `catati-cat-hotel-*` | `<repo>-<component>` | The `cat-hotel` frontend rename (#248). |
-| `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod` after the cutover. |
-| `cat-hotel` admin host `admin.catati.co.nz` | Prod hosts are `<component>.<prod domain>`. | Admin moves to `admin.cathotel.nz` at the cutover. |
-| Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. |
-| GitHub environments `production` in `cat-hotel`, and `development` and `production` in `catsper` | `dev` and `prod` only | `cat-hotel` renames `production` to `prod` with its `deploy-prod` job; `catsper` renames its own. |
-| Catsper stem `catati-catsper` | The repo name is the stem. | Catsper renames its resources. |
+Each row that can end names the open issue that tracks its end. A row with no end date says so instead. Any other row with no open issue fails review.
+
+| Name | Rule it breaks | Ends when | Issue |
+| --- | --- | --- | --- |
+| Firebase project `catati-app` | `<repo>-<component>` | Firebase is removed. | [catsper#600](https://github.com/catati/catsper/issues/600) |
+| Firebase projects `catati-cat-hotel*` | `<repo>-<component>` | They are disabled or deleted. | [cat-hotel#537](https://github.com/catati/cat-hotel/issues/537) |
+| `agents/.prod.env` | `.env.example` | No end date. | None. No end date. |
+| Repo `catati-horizon` | The repo name is the stem. | The Horizon spike reports. | [dev#97](https://github.com/catati/dev/issues/97) |
+| Shopify stores `catati-dev-store` and `3dd4ee` | `<repo>-<env>` | No end date. Shopify fixes store domains. | None. No end date. |
+| `cat-hotel` api top-level Worker name `catati-cat-hotel-api` | `<repo>-<component>` | The top level stops naming it, by 2026-12-31. | [cat-hotel#533](https://github.com/catati/cat-hotel/issues/533) |
+| `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod`. | [cat-hotel#535](https://github.com/catati/cat-hotel/issues/535) |
+| Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. | [cat-hotel#536](https://github.com/catati/cat-hotel/issues/536) |
+| GitHub environments `development` and `production` in `catsper` | `dev` and `prod` only | `catsper` renames them. | [catsper#648](https://github.com/catati/catsper/issues/648) |
+| Catsper stem `catati-catsper` | The repo name is the stem. | Catsper renames its resources. | [catsper#648](https://github.com/catati/catsper/issues/648) |
