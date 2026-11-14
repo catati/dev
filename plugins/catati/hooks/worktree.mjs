@@ -63,7 +63,8 @@ function withRepoLock(repo, work) {
 			if (Date.now() - seen.mtimeMs > REPO_LOCK_STALE_MS) {
 				const stale = `${lock}.stale-${process.pid}-${Date.now()}`;
 				try {
-					if (statSync(lock).ino === seen.ino) renameSync(lock, stale);
+					const now = statSync(lock);
+					if (now.ino === seen.ino && now.mtimeMs === seen.mtimeMs && now.birthtimeMs === seen.birthtimeMs) renameSync(lock, stale);
 				} catch {}
 				rmSync(stale, { recursive: true, force: true });
 				continue;
@@ -170,11 +171,11 @@ function nestedWorktrees(repo, path) {
 function removeOne(path, branch) {
 	if (!existsSync(path)) return null;
 	const repo = commonDir(path);
-	const current = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
-	if (current !== branch) return `${path}: kept, it is on ${current ?? 'a detached HEAD'}, not ${branch}`;
-	const base = tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
-	if (!base) return `${path}: kept, not a catati worktree branch`;
 	return withRepoLock(repo, () => {
+		const current = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
+		if (current !== branch) return `${path}: kept, it is on ${current ?? 'a detached HEAD'}, not ${branch}`;
+		const base = tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
+		if (!base) return `${path}: kept, not a catati worktree branch`;
 		const nested = nestedWorktrees(repo, path);
 		if (nested.length > 0) return `${path}: kept locked, it holds worktree ${nested.join(', ')}`;
 		if (git(['status', '--porcelain', '--untracked-files=all'], path) !== '') return `${path}: kept locked, it has uncommitted changes`;

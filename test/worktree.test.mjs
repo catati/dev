@@ -225,6 +225,25 @@ test('a commit made while remove waits for the repo lock keeps its branch', asyn
 	assert.equal(b.git(repo, 'rev-parse', 'worktree-late'), tip);
 });
 
+test('a detached commit made while remove waits for the repo lock keeps the worktree', async (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const path = b.create('detach').stdout.trim();
+	const lock = join(repo, '.git', 'catati-worktree.lock');
+	mkdirSync(lock);
+	const removing = b.hookAsync('WorktreeRemove', { cwd: b.project, worktree_path: path });
+	await new Promise((done) => setTimeout(done, 400));
+	const worktree = join(path, 'repo');
+	b.git(worktree, 'checkout', '-q', '--detach');
+	b.git(worktree, 'commit', '-q', '--allow-empty', '-m', 'detached');
+	const tip = b.git(worktree, 'rev-parse', 'HEAD');
+	rmSync(lock, { recursive: true });
+	const { status, stderr } = await removing;
+	assert.equal(status, 1);
+	assert.match(stderr, /it is on a detached HEAD, not worktree-detach/);
+	assert.equal(b.git(worktree, 'rev-parse', 'HEAD'), tip);
+});
+
 test('a create whose checkout fails in one repo leaves no branch in any repo', (t) => {
 	const b = box(t);
 	const first = b.repo('a-first');
