@@ -563,7 +563,6 @@ test('merge: asks when gh may read another repo than the guard can see', () => {
     `GH_REPO=catati/cat-hotel gh api -X PUT repos/{owner}/{repo}/pulls/7/merge -f sha=${HEAD}`,
     `pushd /work && gh pr merge 7 ${PIN}`,
     `echo \`gh pr merge 7 ${PIN}\``,
-    'echo 7 | xargs gh pr merge --squash',
     'echo 7 | xargs -I{} gh api -X PUT repos/catati/cat-hotel/pulls/{}/merge',
   ])
     assert.equal(shMerge(github, command, terraform), 'ask', command)
@@ -579,6 +578,7 @@ test('merge: asks when gh may read another repo than the guard can see', () => {
     "git commit -m 'merged `gh pr merge 7`'": null,
     'git commit -m "merged `gh pr merge 7`"': 'deny',
     'echo 7 | xargs gh pr view': null,
+    'echo 7 | xargs gh pr merge --squash': 'deny',
   }))
     assert.equal(shMerge(github, command, terraform), expected, command)
 })
@@ -967,7 +967,7 @@ test('merge: a gh merge handed to a shell, eval or xargs as text asks', () => {
     'eval "$(echo gh pr merge 7 --squash)"': 'ask',
     'bash -c "$(echo gh pr merge 7 --squash)"': 'ask',
     "echo 'gh pr merge 7 --squash' | sh /dev/stdin": 'deny',
-    "echo 'pr merge 7 --squash' | xargs gh": 'ask',
+    "echo 'pr merge 7 --squash' | xargs gh": 'deny',
     "echo 'gh pr merge 7 --squash' | xargs -I{} sh -c '{}'": 'ask',
     "GIT_EDITOR='gh pr merge 7 --squash #' git commit --amend": 'ask',
     "git submodule foreach 'gh pr merge 7 --squash'": 'ask',
@@ -1592,4 +1592,69 @@ test('Bash: a Wrangler flag the guard does not know cannot hide the subcommand',
   ])
     assert.equal(sh(command), 'ask', command)
   assert.equal(sh('npx wrangler --config wrangler.jsonc tail --env prod'), null)
+})
+
+test('Bash: brace groups and program words with a readable basename pass', () => {
+  for (const command of [
+    '{ npm test; } 2>&1 | tail',
+    '{ echo a; echo b; } > f',
+    '$HOME/.local/bin/uv sync',
+    '"$(git rev-parse --show-toplevel)"/scripts/check.sh',
+    '${CLAUDE_PROJECT_DIR}/x.sh',
+  ])
+    assert.equal(sh(command), null, command)
+  for (const command of [
+    '{ make deploy-prod; } 2>&1 | tail',
+    '$HOME/bin/wrangler deploy --env prod',
+    '$(which node) x.mjs',
+    '$HOME/bin/ma?e deploy-prod',
+  ])
+    assert.equal(sh(command), 'ask', command)
+})
+
+test('Bash: here-strings to source, GitHub URLs in any curl form, and $ commands after a wrapper ask', () => {
+  for (const command of [
+    'source /dev/stdin <<< "make deploy-prod"',
+    '. /dev/stdin <<< "make deploy-prod"',
+    'source <<< "make deploy-prod"',
+    'curl --url=https://api.github.com/repos/catati/cat-hotel/actions/workflows/deploy.yml/dispatches -d x',
+    'curl -X POST https://x:t@api.github.com/repos/catati/cat-hotel/actions/workflows/1/dispatches',
+    'gh api -X POST repos/catati/cat-hotel/deployments -f ref=main -f environment=prod',
+    "echo '$W deploy-prod' | W=make bash",
+    'W=make; echo "$W deploy-prod" | bash',
+    'xargs -I{} $W deploy-prod',
+    'ssh h "$W deploy-prod"',
+    'W=make; setsid $W deploy-prod',
+    'W=make; find . -maxdepth 0 -exec $W deploy-prod ;',
+    'W=make; trap "$W deploy-prod" EXIT',
+    'echo deploy --env prod | xargs npx wrangler',
+    'echo deploy-prod | xargs make',
+    'printf "make deploy-prod" | xargs -0 bash -c',
+    'echo make deploy-prod | busybox sh',
+    'alias d="make deploy-prod"',
+    'sudo -h host make deploy-prod',
+    'sudo -R /x make deploy-prod',
+    'yarn workspace landing wrangler deploy',
+    'node node_modules/wrangler/bin/wrangler.js deploy',
+    'npx wrangler deploy --env dev --env prod',
+    'npx wrangler deploy --env=dev --env=prod',
+    'npx wrangler deploy --env dev -e prod',
+    'npx wrangler deploy --env prod -- --dry-run',
+    'npx wrangler deploy --env prod --message --dry-run',
+    'npx wrangler deploy --env prod --name --help',
+    'npx wrangler d1 execute cat-hotel --env prod --remote --command "SELECT 1" -f x.sql',
+    'CLOUDFLARE_ACCOUNT_ID=69f8dc2296dd15d29e03693d6492f163 npx wrangler deploy --env dev',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    'find . -name "*.ts" -exec wc -l {} +',
+    'printf "%s\\n" a b | xargs -I{} echo {}',
+    'git ls-files | xargs grep -n TODO',
+    'ssh h "$HOME/bin/run tests"',
+    'curl -sd x https://api.github.com/repos/catati/cat-hotel/issues/1/comments',
+    'CLOUDFLARE_ACCOUNT_ID=028a7270e2ad8a208cd6b01800f363f3 npx wrangler deploy --env dev',
+    'alias ll="ls -la"',
+    'gh api graphql -f query="mutation { addComment(input:{subjectId:\\"x\\", body:\\"fix the workflow\\"}) { clientMutationId } }"',
+  ])
+    assert.equal(sh(command), null, command)
 })

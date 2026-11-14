@@ -119,8 +119,9 @@ const API_ROUTINE_PULL_WRITES = [
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/ccr\/(ready_for_review|convert_to_draft|comments\/\d+\/(un)?resolve)$/,
 ]
 const ACTIONS_WRITE_ROUTE =
-  /^(repos\/[^/]+\/[^/]+|repositories\/\d+)\/(dispatches$|actions(\/|$)|check-(suites|runs)\/[^/]+\/rerequest$)/
-const GITHUB_API_URL = /^(?:https?:\/\/)?api\.github\.com(?::\d+)?(\/[^\s?#]*)/i
+  /^(repos\/[^/]+\/[^/]+|repositories\/\d+)\/(dispatches$|actions(\/|$)|deployments(\/|$)|check-(suites|runs)\/[^/]+\/rerequest$)/
+const GITHUB_API_URL =
+  /(?:^|[/@=])api\.github\.com\.?(?::\d+)?(\/[^\s?#]*)/i
 const GRAPHQL_RUN_WORD = /rerequest|dispatch|workflow|deployment|approve|rerun/i
 const HTTP_CLIENTS = new Set(['curl', 'wget', 'http', 'https', 'xh', 'xhs'])
 const CURL_VALUE_LETTERS = new Set('AbcCdDeEFHKmoPQrtTuUwxXyYz')
@@ -477,7 +478,12 @@ function ghApiDecision(args, context) {
     .map((route) => route !== null && API_MERGE_ROUTE.exec(route))
     .find(Boolean)
   const mutation = /\bmutation\b/i.test(fields.join(' '))
-  if (routes.includes('graphql') && mutation && GRAPHQL_RUN_WORD.test(fields.join(' ')))
+  const calls = [...fields.join(' ').matchAll(/(\w+)\s*\(/g)].map((m) => m[1])
+  if (
+    routes.includes('graphql') &&
+    mutation &&
+    calls.some((call) => GRAPHQL_RUN_WORD.test(call))
+  )
     return WORKFLOW_RUN
   if (routes.includes('graphql'))
     return graphqlUnread(args, fields) ||
@@ -673,7 +679,9 @@ function wrappedMerge(words, name) {
 
 function readsStdin(item) {
   if (item.kind !== 'segment') return false
-  const { name, args } = program(tokens(item.text))
+  const outer = program(tokens(item.text))
+  const { name, args } =
+    outer.name === 'busybox' ? program(outer.args) : outer
   if (STDIN_RUNNERS.has(name)) return nestedCommands(name, args) === null
   if (SOURCES.has(name)) return args[0] === '<' || STDIN_FILES.has(args[0])
   if (!SHELLS.has(name) || nestedCommands(name, args) !== null) return false
@@ -702,6 +710,26 @@ function shellFedText(items) {
     if (item.kind === 'data') return [item.text]
     if (item.kind !== 'segment' || readsStdin(item)) return []
     return wordSuffixes(tokens(item.text))
+  })
+}
+
+function xargsCommand(args) {
+  let i = 0
+  while (i < args.length && args[i].startsWith('-'))
+    i += XARGS_VALUE_FLAGS.has(args[i]) ? 2 : 1
+  return args.slice(i).join(' ')
+}
+
+function xargsFedText(items) {
+  const segments = items.filter((item) => item.kind === 'segment')
+  return segments.flatMap((item, at) => {
+    const { name, args } = program(tokens(item.text))
+    if (name !== 'xargs' || at === 0) return []
+    const fed = segments
+      .slice(0, at)
+      .flatMap((before) => tokens(before.text).slice(1))
+      .join(' ')
+    return [`${xargsCommand(args)} ${fed}`]
   })
 }
 
@@ -778,6 +806,7 @@ const KEYWORDS = new Set([
   'while',
   'until',
   '{',
+  '}',
   '!',
 ])
 const WRANGLER_BOOLEAN_FLAGS = new Set([
@@ -838,7 +867,7 @@ const VALUE_FLAGS = new Set([
   '--cwd',
 ])
 const PREFIX_VALUE_FLAGS = new Map([
-  ['sudo', ['-u', '-g', '-C', '-D', '-p', '-U', '-r', '-t']],
+  ['sudo', ['-u', '-g', '-C', '-D', '-p', '-U', '-r', '-t', '-h', '-R']],
   ['env', ['-u', '--unset', '-C', '--chdir']],
   ['timeout', ['-s', '--signal', '-k', '--kill-after']],
   ['nice', ['-n', '--adjustment']],
@@ -918,6 +947,9 @@ const OPAQUE_WRAPPERS = new Set([
   'coproc',
 ])
 const STDIN_RUNNERS = new Set(['at', 'batch'])
+const WRANGLER_SCRIPT = /(^|\/)wrangler(\.[cm]?js)?$/
+const XARGS_VALUE_FLAGS = new Set(['-I', '-d', '-E', '-L', '-n', '-P', '-s', '-a'])
+const PROD_PAYLOAD = /\bprod(uction)?\b|-eprod\b|dispatches/i
 const SOURCES = new Set(['source', '.'])
 const STDIN_FILES = new Set(['/dev/stdin', '/dev/fd/0', '/proc/self/fd/0'])
 const UNREADABLE_PROGRAM = /[$`*?{}]|\[.*\]/
@@ -1287,6 +1319,7 @@ function program(input) {
       while (i < words.length) {
         const next = words[i]
         if (VALUE_FLAGS.has(next)) i += 2
+        else if (next === 'workspace') i += 2
         else if (next.startsWith('-') || RUNNER_VERBS.has(next)) i += 1
         else break
       }
@@ -1296,7 +1329,10 @@ function program(input) {
   const name = raw.startsWith('@shopify/cli')
     ? 'shopify'
     : raw.split('/').pop().replace(/@.*$/, '')
-  return { env, raw, name, args: words.slice(i + 1) }
+  const args = words.slice(i + 1)
+  if (name === 'node' && WRANGLER_SCRIPT.test(args[0] ?? ''))
+    return { env, raw, name: 'wrangler', args: args.slice(1) }
+  return { env, raw, name, args }
 }
 
 function flagValues(args, long, short) {
@@ -1343,8 +1379,26 @@ function wranglerReadOnly(args) {
   )
 }
 
+function wranglerOptions(args) {
+  const end = args.indexOf('--')
+  return end === -1 ? args : args.slice(0, end)
+}
+
+function wranglerFlagWords(args) {
+  const flags = []
+  const options = wranglerOptions(args)
+  for (let i = 0; i < options.length; i += 1) {
+    const arg = options[i]
+    if (!arg.startsWith('-')) continue
+    flags.push(arg)
+    if (!arg.includes('=') && !WRANGLER_BOOLEAN_FLAGS.has(arg)) i += 1
+  }
+  return flags
+}
+
 function wranglerReadsWith(args, words) {
-  if (['--dry-run', '--help', '--version', '-v'].some((f) => args.includes(f)))
+  const options = new Set(wranglerFlagWords(args))
+  if (['--dry-run', '--help', '--version', '-v'].some((f) => options.has(f)))
     return true
   if (
     LOCAL_GROUPS.has(words[0]) &&
@@ -1357,7 +1411,7 @@ function wranglerReadsWith(args, words) {
   const commands = flagValues(args, '--command')
   return (
     startsWith(words, ['d1', 'execute']) &&
-    !args.some((arg) => /^--file(=|$)/i.test(arg)) &&
+    !args.some((arg) => /^(-f|--fi)/i.test(arg)) &&
     commands.length > 0 &&
     commands.every(isPlainSqlRead)
   )
@@ -1377,8 +1431,18 @@ function isPlainSqlRead(sql) {
 }
 
 function wranglerDecision(args, env) {
+  const account = env.CLOUDFLARE_ACCOUNT_ID
+  if (account !== undefined && account !== ACCOUNTS.dev)
+    return prodWrite(
+      `CLOUDFLARE_ACCOUNT_ID=${account} sends this Wrangler command to an account other than catati-dev, whatever --env says. For dev, leave it unset or use ${ACCOUNTS.dev}.`
+    )
   if (wranglerReadOnly(args)) return allow
-  const target = flagValue(args, '--env', '-e') ?? env.CLOUDFLARE_ENV ?? ''
+  const targets = flagValues(wranglerOptions(args), '--env', '-e')
+  const target =
+    targets.find((value) => value !== 'dev') ??
+    targets[0] ??
+    env.CLOUDFLARE_ENV ??
+    ''
   if (target === 'dev') return allow
   if (target === '')
     return prodWrite(
@@ -1441,10 +1505,14 @@ function nestedCommands(name, args) {
     return [args.slice(i).join(' ')]
   }
   if (OPAQUE_WRAPPERS.has(name)) return null
-  if (STDIN_RUNNERS.has(name)) {
+  if (STDIN_RUNNERS.has(name) || SOURCES.has(name)) {
     const here = hereString(args)
     return here === null ? null : [here]
   }
+  if (name === 'alias')
+    return args
+      .filter((arg) => arg.includes('='))
+      .map((arg) => arg.slice(arg.indexOf('=') + 1))
   if (!SHELLS.has(name)) return null
   const command = shellCommandString(args) ?? hereString(args)
   return command === null ? null : [command]
@@ -1490,7 +1558,14 @@ function decideSegment(segment, context) {
       ? parsed.args.flatMap(stringLiterals)
       : []),
   ]
-  const unreadable = !context.guessing && UNREADABLE_PROGRAM.test(parsed.raw)
+  const base = parsed.raw.split('/').pop()
+  const unreadableWord =
+    parsed.raw !== '' && (base === '' || UNREADABLE_PROGRAM.test(base))
+  const unreadable = context.guessing
+    ? unreadableWord &&
+      /[$`]/.test(base) &&
+      PROD_PAYLOAD.test(parsed.args.join(' '))
+    : unreadableWord
   let direct = []
   if (nested !== null)
     direct = nested.map((command) => decideCommand(command, context))
@@ -1542,7 +1617,8 @@ function decideCommand(command, context) {
   const outer = []
   let current = context
   const results = [stdinShell(items, command)]
-  for (const text of shellFedText(items)) results.push(guess(text, context))
+  for (const text of [...shellFedText(items), ...xargsFedText(items)])
+    results.push(guess(text, context))
   for (const item of items) {
     if (item.kind === '(') outer.push(current)
     else if (item.kind === ')') current = outer.pop() ?? current
