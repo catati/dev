@@ -166,6 +166,7 @@ const INERT_PROGRAMS = new Set([
   'less',
 ])
 const PAGE_SIZE = 100
+const MAX_BLOCKERS = 10
 const GH_OPTIONS = {
   encoding: 'utf8',
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -214,30 +215,32 @@ function readPull(api, repo, number) {
     }
   }
   const pull = api(`repos/${repo}/pulls/${number}`)
-  const refs = blockerRefs(pull.body ?? '', repo)
   return {
     headSha: pull.head.sha,
+    body: pull.body ?? '',
     comments: all(`issues/${number}/comments`).map((c) => c.body ?? ''),
     files: all(`pulls/${number}/files`).flatMap((f) =>
       [f.filename, f.previous_filename].filter(Boolean)
     ),
-    blockedByParses: refs !== null,
-    blockers: (refs ?? []).map((ref) => readBlocker(api, ref)),
   }
 }
 
-function blockerRefs(body, repo) {
+function blockedBy(body, repo) {
   const refs = []
+  let malformed = false
   for (const line of body.split(/\r?\n/)) {
     if (!BLOCKED_BY_START.test(line)) continue
     const list = BLOCKED_BY.exec(line)?.[1]
-    if (!list) return null
+    if (!list) {
+      malformed = true
+      continue
+    }
     for (const ref of list.split(',')) {
       const [other, number] = ref.trim().split('#')
       refs.push(`${other || repo}#${number}`)
     }
   }
-  return distinct(refs)
+  return { refs: distinct(refs), malformed }
 }
 
 function readBlocker(api, ref) {
@@ -291,11 +294,6 @@ function mergeDecision(
       `The guard could not read pull request ${repo ?? cwd}#${number} from GitHub (${error.message}), so it cannot confirm a verifier PASS at the head commit or that no open issue or pull request blocks it. Approve only after you check both yourself.`
     )
   }
-  const open = pull.blockers.filter((b) => b.open).map((b) => b.ref)
-  if (open.length)
-    return deny(
-      `${slug}#${number} names ${open.join(', ')} on its "Blocked by:" line, and each is still open. Merge only after each one is merged or closed (${MERGE_RULES}).`
-    )
   if (!verifierPassed(pull))
     return deny(
       `${slug}#${number} has no verifier record for its head commit ${pull.headSha}. Merge only after a fresh non-author verifier passes at that commit and a pull request comment's first line is exactly "VERIFIER PASS ${pull.headSha}", with any notes below it. The pstack playbook in use decides who verifies and who posts the record (${MERGE_RULES}).`
@@ -304,11 +302,25 @@ function mergeDecision(
     return deny(
       `${slug}#${number} is verified at ${pull.headSha}, but this merge ${pin ? `pins ${pin}` : 'pins no head commit'}, so a push after the check could merge an unverified commit. Add ${addPin(pull.headSha)}.`
     )
-  const unread = pull.blockers.filter((b) => b.error)
+  const { refs, malformed } = blockedBy(pull.body, slug)
+  const tooMany = refs.length > MAX_BLOCKERS
+  const blockers = tooMany
+    ? []
+    : refs.map((ref) => readBlocker(github.api, ref))
+  const open = blockers.filter((b) => b.open).map((b) => b.ref)
+  if (open.length)
+    return deny(
+      `${slug}#${number} names ${open.join(', ')} on its "Blocked by:" line, and each is still open. Merge only after each one is merged or closed (${MERGE_RULES}).`
+    )
+  const unread = blockers.filter((b) => b.error)
   return combine([
-    !pull.blockedByParses &&
+    malformed &&
       ask(
-        `${slug}#${number} has a line that starts with "Blocked by" but does not read as "Blocked by: #N, owner/repo#N", so the guard cannot tell what must merge or close first. Fix that line in the pull request body, or approve only after you check the merge order yourself.`
+        `${slug}#${number} has a line that starts with "Blocked by" but does not read as "Blocked by: #N, owner/repo#N", so the guard cannot tell what that line names. Fix that line in the pull request body, or approve only after you check the merge order yourself.`
+      ),
+    tooMany &&
+      ask(
+        `${slug}#${number} names ${refs.length} issues or pull requests on its "Blocked by:" lines, more than the ${MAX_BLOCKERS} the guard reads in one merge check, so it read none of them. Name at most ${MAX_BLOCKERS}, such as one tracking issue that closes when the rest are done, or approve only after you check each one is merged or closed.`
       ),
     unread.length &&
       ask(
