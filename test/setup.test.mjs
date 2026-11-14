@@ -10,7 +10,6 @@ const template = (name) => readFileSync(new URL(`../templates/${name}`, import.m
 
 const managed = {
 	'.github/ISSUE_TEMPLATE/issue.yml': 'issue.yml',
-	'.github/CODEOWNERS': 'CODEOWNERS',
 	'.githooks/pre-commit': 'githooks/pre-commit',
 	'.githooks/pre-push': 'githooks/pre-push',
 	'.node-version': 'node-version',
@@ -88,25 +87,14 @@ test('a second run changes nothing', (t) => {
 	assert.deepEqual(box.snapshot(), before);
 });
 
-const repoOwners = ['/firestore.rules @catati-ops', '/docs/adr/ @catati-ops', ''].join('\n');
-
-test('a CODEOWNERS file that has every template line keeps its own lines', (t) => {
-	const content = `${repoOwners}\n${template('CODEOWNERS')}`;
-	const box = sandbox(t, { files: { '.github/CODEOWNERS': content } });
-	assert.ok(box.run().lines.includes('unchanged .github/CODEOWNERS'));
-	assert.equal(box.file('.github/CODEOWNERS').toString(), content);
-});
-
-test('CODEOWNERS gets the missing template lines at the end and keeps every other line', (t) => {
-	const lines = template('CODEOWNERS').toString().split('\n').filter(Boolean);
-	const content = `${repoOwners}${lines[1]}\n/Makefile @someone-else`;
-	const box = sandbox(t, { files: { '.github/CODEOWNERS': content } });
-	assert.ok(box.run().lines.includes('updated .github/CODEOWNERS'));
-	const missing = lines.filter((line) => line !== lines[1]);
-	assert.equal(box.file('.github/CODEOWNERS').toString(), `${content}\n${missing.join('\n')}\n`);
-	const before = box.snapshot();
-	assert.ok(box.run().lines.includes('unchanged .github/CODEOWNERS'));
-	assert.deepEqual(box.snapshot(), before);
+test('setup neither writes nor removes .github/CODEOWNERS', (t) => {
+	const fresh = sandbox(t);
+	assert.deepEqual(fresh.run(), { status: 0, lines: [...every('created'), ...remaining] });
+	assert.equal(existsSync(join(fresh.root, '.github/CODEOWNERS')), false);
+	const content = '/.github/workflows/ @catati-ops\n/docs/adr/ @someone\n';
+	const owned = sandbox(t, { files: { '.github/CODEOWNERS': content } });
+	assert.deepEqual(owned.run(), { status: 0, lines: [...every('created'), ...remaining] });
+	assert.equal(owned.file('.github/CODEOWNERS').toString(), content);
 });
 
 test('a differing managed file is updated, and a hook gets its exec bit back', (t) => {
@@ -157,17 +145,17 @@ test('a hook with the right body but no exec bit is updated', (t) => {
 });
 
 test('a managed path that is a symlink is left as is', (t) => {
-	const box = sandbox(t, { files: { 'shared/CODEOWNERS': '* @someone\n' } });
-	mkdirSync(join(box.root, '.github'));
-	symlinkSync('../shared/CODEOWNERS', join(box.root, '.github', 'CODEOWNERS'));
-	assert.ok(box.run().lines.includes('skipped .github/CODEOWNERS: is not a regular file; left as is'));
-	assert.ok(lstatSync(join(box.root, '.github', 'CODEOWNERS')).isSymbolicLink());
-	assert.equal(readlinkSync(join(box.root, '.github', 'CODEOWNERS')), '../shared/CODEOWNERS');
+	const box = sandbox(t, { files: { 'shared/issue.yml': 'name: own\n' } });
+	mkdirSync(join(box.root, '.github/ISSUE_TEMPLATE'), { recursive: true });
+	symlinkSync('../../shared/issue.yml', join(box.root, '.github/ISSUE_TEMPLATE/issue.yml'));
+	assert.ok(box.run().lines.includes('skipped .github/ISSUE_TEMPLATE/issue.yml: is not a regular file; left as is'));
+	assert.ok(lstatSync(join(box.root, '.github/ISSUE_TEMPLATE/issue.yml')).isSymbolicLink());
+	assert.equal(readlinkSync(join(box.root, '.github/ISSUE_TEMPLATE/issue.yml')), '../../shared/issue.yml');
 });
 
 test('a managed directory that is a symlink out of the repo is skipped, and nothing outside changes', async (t) => {
 	const cases = {
-		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/CODEOWNERS', '.github/pull_request_template.md', '.github/workflows/pr-format.yml'],
+		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md', '.github/workflows/pr-format.yml'],
 		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
 		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
 	};
