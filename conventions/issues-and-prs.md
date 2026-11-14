@@ -17,6 +17,7 @@ Title formats, status label names and the labels file are in [naming.md](naming.
 | --- | --- |
 | `.github/ISSUE_TEMPLATE/issue.yml` equals `templates/issue.yml`. | `catati check` |
 | An issue fills the form fields Card, What to build, Acceptance criteria and Blocked by. | judgment |
+| An issue that waits on another issue records it as a native `blocked_by` dependency. A PR records its merge order in its body instead, as [Merges](#merges) says. | judgment |
 | An open issue has exactly one status label. | judgment |
 | `todo` means planned and ready. `doing` means a builder has it. `review` means its PR is open. `blocked` means it waits on a person. | judgment |
 | Work that spans several issues has one epic issue. Each issue is a native GitHub sub-issue of the epic. | judgment |
@@ -41,7 +42,7 @@ The `catati` plugin's prod guard (`plugins/catati/hooks/guard-prod.mjs`) reads a
 | A failed verdict's first line is `VERIFIER FAIL <sha>`. | judgment |
 | A push makes a new head, which needs a new record. | The guard, which reads the head at merge time |
 | The merge call pins the verified head: `expectedHeadSha` on `mcp__github__merge_pull_request`, `--match-head-commit <sha>` on `gh pr merge`, or `sha` on a REST merge. | The guard refuses a merge that does not pin it. |
-| When one PR must merge before another, the later PR records it as a native `blocked_by` dependency. | judgment |
-| A PR with an open `blocked_by` dependency does not merge. | None yet. #93 adds the refusal to the guard. |
+| When one PR must merge before another, the later PR's body holds one line `Blocked by: <ref>, <ref>`. Each ref is `#N` or `owner/repo#N` and names an issue or a PR. GitHub refuses a native `blocked_by` dependency on a PR. | judgment |
+| A PR whose `Blocked by:` line names an open issue or PR does not merge. | The guard (`plugins/catati/hooks/guard-prod.mjs`, from #95) refuses the merge. |
 | A PR that `catati check-merge` lists as a one-way door, or whose merge changes prod, is the operator's to merge, after its verifier record and green required CI. See [Who changes prod](deploy.md#who-changes-prod). | judgment |
 | A session merges every other PR once its verifier record names the head and required CI is green. The pstack playbook in use decides which session. A repo's own merge rule can narrow that. | judgment |
