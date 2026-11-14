@@ -939,7 +939,8 @@ test('merge: a merge argument or REST endpoint the shell fills in later asks', (
     [`gh pr merge 8 --squash $'--auto' ${PIN}`]: 'deny',
     [`gh pr merge 8 --squash $(echo --auto) ${PIN}`]: 'ask',
     [`AUTO=--auto; gh pr merge 8 --squash $AUTO ${PIN}`]: 'ask',
-    'gh api repos/catati/cat-hotel/pulls/$N': null,
+    'gh api repos/catati/cat-hotel/pulls/$N': 'ask',
+    'gh api "repos/catati/cat-hotel/pulls/$N"': null,
   })
 })
 
@@ -1541,10 +1542,11 @@ test('Bash: a program word the guard cannot read asks, as do trap, builtin and c
     "builtin eval 'make deploy-prod'",
     'coproc make deploy-prod',
     'coproc job { npx wrangler deploy --env prod; }',
+    'T=deploy-dev; make $T',
   ])
     assert.equal(sh(command), 'ask', command)
   for (const command of [
-    'T=deploy-dev; make $T',
+    'for t in test lint; do make $t; done',
     '[ -d dist ] && echo yes',
     'for f in *.md; do grep -l deploy "$f"; done',
     "trap 'rm -f /tmp/x' EXIT",
@@ -1759,6 +1761,81 @@ test('guard: a read flag counts only when it is on once, and a trusted $ name co
   expectAll(roundTwo(), {
     [`gh pr merge 7 --disable-auto --disable-auto=false ${PIN}`]: 'deny',
     [`gh pr merge 7 --disable-auto=false --disable-auto ${PIN}`]: 'deny',
+    'gh pr merge 7 --disable-auto': null,
+  })
+})
+
+test('guard: a word the shell fills in, splits or globs never proves a read, a dev target or a trusted path', () => {
+  for (const command of [
+    'X=false; npx wrangler deploy --env prod --dry-run $X',
+    'npx wrangler deploy --env prod --dry-run "$X"',
+    'npx wrangler deploy --env prod --dry-run $(echo false)',
+    'npx wrangler deploy --env prod --dry-run `echo false`',
+    'npx wrangler deploy --env prod --dry-run fals?',
+    'npx wrangler deploy --env prod --dry-run --outdir $D',
+    'X="--env prod"; npx wrangler deploy --env dev $X',
+    'npx wrangler deploy --env dev --name "$N"',
+    'npx wrangler deploy --env de?',
+    'npx -p $P wrangler deploy --env dev',
+    'npx wrangler d1 execute DB --env prod --remote --command "SELECT $X"',
+    'npx wrangler d1 execute DB --env prod --remote --command=SELECT*',
+    'mkdir -p "node_modules/.bin/wrangler deploy --env prod " && cd "node_modules/.bin/wrangler deploy --env prod " && $PWD/x',
+    'cd "/usr/bin/make deploy-prod " && $PWD/x',
+    'pushd /tmp && $PWD/x',
+    'cd - && $PWD/x',
+    'CDPATH="/usr/bin/make deploy-prod "; cd api && $PWD/x',
+    'declare -n R; R=HOME; R="make deploy-prod "; $HOME/x',
+    'declare -n R; for R in HOME; do R="make deploy-prod "; done; $HOME/x',
+    'typeset -gn R; R=HOME; R="make deploy-prod "; $HOME/x',
+    'declare -rn R=TMPDIR; $TMPDIR/x',
+    'CF_ACCOUNT_ID=0000 npx wrangler deploy --env dev',
+    'export CF_ACCOUNT_ID=0000; npx wrangler deploy --env dev',
+    'read CF_ACCOUNT_ID <<< 0000; export CF_ACCOUNT_ID; npx wrangler deploy --env dev',
+    'T=deploy-prod; make $T',
+    'make "$(echo deploy-prod)"',
+    'shopify app $X',
+    'shopify app deploy --config dev $X',
+    'R="catati/cat-hotel pr merge 7 --admin"; gh -R $R',
+    'gh run rer?n 5',
+    'gh api repos/catati/cat-hotel/pulls/7 $X',
+    'gh api -X $M repos/catati/cat-hotel/issues/7/comments',
+    'curl -X POST "$U"',
+    'curl https://api.github.com/repos/catati/cat-hotel/dispatches "$D"',
+    'gcloud run services list $X --project prod',
+    'for t in test deploy-prod; do make $t; done',
+    'for e in dev prod; do npx wrangler deploy --env $e; done',
+    'for app in "admin app"; do pnpm --dir $app exec wrangler deploy --env dev; done',
+    'pnpm --dir $app exec wrangler deploy --env dev; for app in admin; do :; done',
+    'for app in admin; do app="x --env prod"; pnpm --dir $app exec wrangler deploy --env dev; done',
+    "for app in admin; do bash -c 'pnpm --dir $app exec wrangler deploy --env dev'; done",
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    'npx wrangler deploy --env prod --dry-run --outdir dist',
+    "npx wrangler deploy --env prod --dry-run 'fals?'",
+    'npx wrangler deploy --env dev --var "A:$B"',
+    'npx wrangler deploy --env dev --name="$N"',
+    'npx wrangler d1 execute DB --env prod --remote --command "SELECT count(*) FROM rooms"',
+    'cd api && $PWD/node_modules/.bin/vitest run',
+    'cd /tmp && $PWD/x',
+    `CF_ACCOUNT_ID=${DEV} npx wrangler deploy --env dev`,
+    'shopify app deploy --config dev --message="v $V"',
+    'gh pr view $N',
+    'gh api "repos/catati/cat-hotel/pulls/$N/comments"',
+    'gh api repos/catati/cat-hotel/actions/runs?per_page=5',
+    'curl -sS "$HTTPS_PROXY/__agentproxy/status"',
+    'make test',
+    '{ npm test; } | tail',
+    '[ -f x ] && [[ -d y ]]',
+    'gh api repos/{owner}/{repo}/pulls',
+    'for app in admin app landing; do pnpm --dir $app exec wrangler deploy --env dev; done',
+    'for e in dev; do npx wrangler deploy --env "$e"; done',
+  ])
+    assert.equal(sh(command), null, command)
+  expectAll(roundTwo(), {
+    [`X=false; gh pr merge 7 --disable-auto=$X ${PIN}`]: 'deny',
+    [`gh pr merge 8 --disable-auto="$(echo false)" ${PIN}`]: 'ask',
+    [`gh pr merge 8 --disable-auto $X ${PIN}`]: 'ask',
     'gh pr merge 7 --disable-auto': null,
   })
 })

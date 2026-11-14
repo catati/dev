@@ -59,8 +59,14 @@ function isOverbookedNightsProdRead(accountId, code, pin) {
 }
 
 const allow = null
-const ask = (reason) => ({ decision: 'ask', reason })
-const deny = (reason) => ({ decision: 'deny', reason })
+const FILLED = '\0'
+const SPLIT = '\0\x01'
+const UNKNOWN_WORD = /[\0$`]/
+const unknown = (word) => UNKNOWN_WORD.test(word)
+const hides = (word) => word.startsWith(FILLED) || word.includes(SPLIT)
+const shown = (reason) => reason.replace(/\0\x01?/g, '')
+const ask = (reason) => ({ decision: 'ask', reason: shown(reason) })
+const deny = (reason) => ({ decision: 'deny', reason: shown(reason) })
 const prodWrite = (reason) =>
   ask(`${reason} Approve only if Shien asked for this specific prod action.`)
 
@@ -164,6 +170,8 @@ const AUTO_MERGE = deny(
 )
 const RUN_GH_DIRECTLY =
   'Run gh pr merge as its own command with the PR number, -R owner/repo and --match-head-commit.'
+const QUOTE_VARIABLES =
+  'Write the words out, or quote each variable inside a word that starts with plain text, such as --name="$N".'
 
 export const gitHub = {
   api(path) {
@@ -374,8 +382,10 @@ function ghPrMergeDecision(args, context) {
   context.seen.merge = true
   const { flags, positionals } = parseMergeArgs(args)
   if (flagOn(flags.get('auto'))) return AUTO_MERGE
-  if (flagAllOn(flags.get('disable-auto'))) return allow
-  const unread = args.filter((word) => /[$`]|\{[^}]*,[^}]*\}/.test(word))
+  const unread = args.filter(
+    (word) => unknown(word) || /\{[^}]*,[^}]*\}/.test(word)
+  )
+  if (unread.length === 0 && flagAllOn(flags.get('disable-auto'))) return allow
   const repos = flags.get('repo') ?? []
   if (distinct(repos).length > 1)
     return deny(
@@ -458,7 +468,7 @@ function apiMethods(args, fields) {
 function graphqlUnread(args, fields) {
   return (
     flagValues(args, '--input').length > 0 ||
-    fields.some((field) => /[$`]|^@/.test(field.slice(field.indexOf('=') + 1)))
+    fields.some((field) => /[\0$`]|^@/.test(field.slice(field.indexOf('=') + 1)))
   )
 }
 
@@ -481,12 +491,16 @@ function mutationRunsWorkflow(fields) {
 }
 
 function ghApiDecision(args, context) {
+  if (args.some(hides))
+    return ask(
+      `This gh api call has a word the shell may split or turn into a flag (${args.filter(hides).join(' ')}), so the guard cannot tell its method or path. ${QUOTE_VARIABLES}`
+    )
   const fields = apiFields(args)
   const { overridden, methods } = apiMethods(args, fields)
   if (!overridden && methods.every((method) => READ_METHODS.has(method)))
     return allow
   const endpoints = apiEndpoints(args)
-  if (endpoints.some((endpoint) => UNKNOWN_WORD.test(endpoint)))
+  if (endpoints.some(unknown))
     return ask(
       `This gh api write names an endpoint the shell fills in later (${endpoints.join(' ')}), so the guard cannot tell whether it merges. Write the path out, or ${RUN_GH_DIRECTLY}`
     )
@@ -540,19 +554,19 @@ function ghApiDecision(args, context) {
   )
 }
 
-const UNKNOWN_WORD = /[$`]/
 const UNKNOWN_SUBCOMMAND = ask(
   `A gh subcommand here comes from a variable or a substitution, so the guard cannot tell whether it merges. ${RUN_GH_DIRECTLY}`
 )
 
 function ghDecision(rawArgs, context) {
   const args = expandGhShortFlags(rawArgs)
+  const through = (at) => args.slice(0, at === -1 ? args.length : at + 1)
   const first = ghCommandWord(args, 0)
-  if (UNKNOWN_WORD.test(args[first] ?? '')) return UNKNOWN_SUBCOMMAND
+  if (through(first).some(unknown)) return UNKNOWN_SUBCOMMAND
   if (args[first] === 'api') return ghApiDecision(without(args, first), context)
   if (!['pr', 'workflow', 'run', 'alias'].includes(args[first])) return allow
   const second = ghCommandWord(args, first + 1)
-  if (UNKNOWN_WORD.test(args[second] ?? '')) return UNKNOWN_SUBCOMMAND
+  if (through(second).some(unknown)) return UNKNOWN_SUBCOMMAND
   if (args[first] === 'alias' && ['set', 'import'].includes(args[second]))
     return GH_ALIAS
   const changesRun = GH_CHANGES_RUN.some(
@@ -643,7 +657,10 @@ function githubRunTarget(args) {
 
 function curlPut(args) {
   return (
-    curlMethods(args).some((method) => method.toUpperCase() === 'PUT') ||
+    args.some(hides) ||
+    curlMethods(args).some(
+      (method) => method.toUpperCase() === 'PUT' || unknown(method)
+    ) ||
     args.some((arg) => /^(-T|--upload-file(=|$))/.test(arg))
   )
 }
@@ -968,7 +985,11 @@ const PATH_NAMES = ['HOME', 'PWD', 'CLAUDE_PROJECT_DIR', 'CLAUDE_PLUGIN_ROOT', '
 const PATH_VARIABLE = new RegExp(
   `^\\$(?:\\{(${PATH_NAMES.join('|')})\\}|(${PATH_NAMES.join('|')})(?!\\w))`
 )
-const GUARDED_NAMES = [...PATH_NAMES, 'CLOUDFLARE_ACCOUNT_ID']
+const ACCOUNT_NAMES = ['CLOUDFLARE_ACCOUNT_ID', 'CF_ACCOUNT_ID']
+const GUARDED_NAMES = [...PATH_NAMES, ...ACCOUNT_NAMES]
+const NAMEREF = /\b(?:declare|typeset|local)\b[^;&|\n]*\s-[A-Za-z]*n/
+const PLAIN_DIR = /^(?!-)[\w./@%+,:=-]+$/
+const ASSIGNMENT = /^([A-Z_][A-Z0-9_]*)=(.*)$/
 const DECLARING = String.raw`\b(?:export|declare|typeset|local|readonly|read|mapfile|readarray|getopts)\b`
 const SEGMENT_REST = String.raw`[^;&|\n]*`
 const RUNS_TEXT_AS_SHELL =
@@ -987,21 +1008,83 @@ function computedDeclaration(text) {
   )
 }
 
-function reassignedNames(command) {
-  const text = command.replace(/['"\\]/g, '')
-  if (RUNS_TEXT_AS_SHELL.test(command) || computedDeclaration(text))
-    return new Set(GUARDED_NAMES)
-  return new Set(
-    GUARDED_NAMES.filter((name) =>
-      [
-        String.raw`(?<![\w$])${name}[+:]?=`,
-        String.raw`\b(?:for|select)\s+${name}\b`,
-        String.raw`${DECLARING}${SEGMENT_REST}?(?<![\w$\{])${name}\b`,
-        String.raw`\bprintf\b${SEGMENT_REST}\s-v\s*${name}\b`,
-      ].some((pattern) => new RegExp(pattern).test(text))
+function movesPwd(text) {
+  return (
+    /\b(?:pushd|popd|CDPATH)\b/.test(text) ||
+    [...text.matchAll(/\bcd\b([^;&|\n)]*)/g)].some(
+      (match) => !PLAIN_DIR.test(match[1].trim())
     )
   )
 }
+
+const unquoted = (command) => command.replace(/['"\\]/g, '')
+
+const namesUnreadable = (command, text) =>
+  RUNS_TEXT_AS_SHELL.test(command) ||
+  computedDeclaration(text) ||
+  NAMEREF.test(text)
+
+const assignedOutsideLoop = (name, text) =>
+  [
+    String.raw`(?<![\w$])${name}[+:]?=`,
+    String.raw`\bselect\s+${name}\b`,
+    String.raw`${DECLARING}${SEGMENT_REST}?(?<![\w$\{])${name}\b`,
+    String.raw`\bprintf\b${SEGMENT_REST}\s-v\s*${name}\b`,
+  ].some((pattern) => new RegExp(pattern).test(text))
+
+function reassignedNames(command) {
+  const text = unquoted(command)
+  if (namesUnreadable(command, text)) return new Set(GUARDED_NAMES)
+  return new Set(
+    GUARDED_NAMES.filter(
+      (name) =>
+        (name === 'PWD' && movesPwd(text)) ||
+        new RegExp(String.raw`\bfor\s+${name}\b`).test(text) ||
+        assignedOutsideLoop(name, text)
+    )
+  )
+}
+
+const NAME_USE = /\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g
+const usedNames = (text) =>
+  [...text.matchAll(NAME_USE)].map((match) => match[1] ?? match[2])
+
+function loopValues(command) {
+  const text = unquoted(command)
+  const values = new Map()
+  if (namesUnreadable(command, text) || /\bIFS\b/.test(text)) return values
+  const outside = new Set()
+  const open = []
+  for (const item of split(command)) {
+    if (item.kind !== 'segment') {
+      for (const name of usedNames(item.text ?? '')) outside.add(name)
+      continue
+    }
+    const words = tokens(item.text)
+    const head = words.slice(Math.max(0, words.findIndex((w) => !KEYWORDS.has(w))))
+    if (head[0] === 'done') open.pop()
+    for (const name of usedNames(item.text))
+      if (!open.includes(name)) outside.add(name)
+    if (head[0] === 'for') {
+      const [, name, word, ...list] = head
+      const plain =
+        word === 'in' && list.length > 0 && list.every((w) => PLAIN_DIR.test(w))
+      if (plain) values.set(name, [...(values.get(name) ?? []), ...list])
+      else outside.add(name)
+      open.push(plain ? name : null)
+    } else if (['while', 'until', 'select'].includes(head[0])) open.push(null)
+  }
+  for (const name of values.keys())
+    if (outside.has(name) || assignedOutsideLoop(name, text)) values.delete(name)
+  return values
+}
+
+const LOOP_USE = /\0(?:\x01)?\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*)(?!\w))/g
+
+const loopResolver = (values) => (word) =>
+  word.replace(LOOP_USE, (use, braced, bare) =>
+    values.get(braced ?? bare)?.join(' ') ?? use
+  )
 const XARGS_VALUE_FLAGS = new Set(['-I', '-d', '-E', '-L', '-n', '-P', '-s', '-a'])
 const PROD_PAYLOAD = /\bprod(uction)?\b|-eprod\b|dispatches/i
 const SOURCES = new Set(['source', '.'])
@@ -1312,7 +1395,8 @@ function tokens(segment) {
       else if (ch === '\\' && '$`"\\'.includes(segment[i + 1] ?? '')) {
         word += segment[i + 1]
         i += 1
-      } else word += ch
+      } else if (ch === '$' || ch === '`') word += FILLED + ch
+      else word += ch
     } else if (quote === '$') {
       if (ch === "'") quote = null
       else if (ch === '\\') {
@@ -1341,11 +1425,28 @@ function tokens(segment) {
       else if (ch === '\\') {
         word += segment[i + 1] ?? ''
         i += 1
-      } else word += ch
+      } else word += shellMark(segment, i, word) + ch
     }
   }
   if (word !== null) words.push(word)
   return words
+}
+
+function shellMark(segment, at, word) {
+  const ch = segment[at]
+  if (ch === '$' || ch === '`') return SPLIT
+  if (ch === '*' || ch === '?') return FILLED
+  if (ch === '[')
+    return /^\[?$/.test(word) &&
+      /^\[\[?(?:\s|$)/.test(segment.slice(at - word.length))
+      ? ''
+      : FILLED
+  if (ch === '{')
+    return segment[at - 1] !== '$' &&
+      /^\{(?!\s)[^}]*(?:,|\.\.)/.test(segment.slice(at))
+      ? FILLED
+      : ''
+  return ''
 }
 
 function program(input) {
@@ -1356,7 +1457,7 @@ function program(input) {
   while (i < words.length) {
     const word = words[i]
     const base = word.replace(/^\\/, '').split('/').pop()
-    const assignment = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(word)
+    const assignment = ASSIGNMENT.exec(word)
     if (assignment) {
       env[assignment[1]] = assignment[2]
       i += 1
@@ -1397,14 +1498,22 @@ function program(input) {
     ? 'shopify'
     : raw.split('/').pop().replace(/@.*$/, '')
   const args = words.slice(i + 1)
+  const prefix = words.slice(0, i)
   const script = SCRIPT_RUNTIMES.has(name)
     ? args.findIndex((arg) => !arg.startsWith('-'))
     : -1
   if (script !== -1 && WRANGLER_SCRIPT.test(args[script]))
-    return { env, raw, index, name: 'wrangler', args: args.slice(script + 1) }
+    return {
+      env,
+      raw,
+      index,
+      prefix: [...prefix, raw, ...args.slice(0, script + 1)],
+      name: 'wrangler',
+      args: args.slice(script + 1),
+    }
   if (WRANGLER_SCRIPT.test(raw) && raw.includes('/'))
-    return { env, raw, index, name: 'wrangler', args }
-  return { env, raw, index, name, args }
+    return { env, raw, index, prefix, name: 'wrangler', args }
+  return { env, raw, index, prefix, name, args }
 }
 
 function flagValues(args, long, short) {
@@ -1486,7 +1595,9 @@ function wranglerFlagOn(args, { spellings, names }) {
   return wranglerFlagWords(args).some(
     ({ arg, next }) =>
       spellings.some((spelling) => arg === `${spelling}=true`) ||
-      (spellings.includes(arg) && (!BOOLEAN_WORD.test(next) || next === 'true'))
+      (spellings.includes(arg) &&
+        !unknown(next) &&
+        (!BOOLEAN_WORD.test(next) || next === 'true'))
   )
 }
 
@@ -1517,7 +1628,7 @@ const SQL_WRITE_WORD =
 function isPlainSqlRead(sql) {
   return (
     /^[\x20-\x7e]*$/.test(sql) &&
-    !/;|--|\/\*|\\/.test(sql) &&
+    !/;|--|\/\*|\\|[$`]/.test(sql) &&
     SQL_READ_START.test(sql) &&
     !SQL_WRITE_WORD.test(sql)
   )
@@ -1525,23 +1636,28 @@ function isPlainSqlRead(sql) {
 
 function wranglerEnv(env, context) {
   const merged = { ...context.exported, ...env }
-  if (
-    merged.CLOUDFLARE_ACCOUNT_ID === undefined &&
-    context.reassigned.has('CLOUDFLARE_ACCOUNT_ID')
-  )
-    merged.CLOUDFLARE_ACCOUNT_ID = null
+  for (const name of ACCOUNT_NAMES)
+    if (merged[name] === undefined && context.reassigned.has(name))
+      merged[name] = null
   return merged
 }
 
 function wranglerDecision(args, env) {
-  const account = env.CLOUDFLARE_ACCOUNT_ID
-  if (account === null)
+  for (const name of ACCOUNT_NAMES) {
+    const account = env[name]
+    if (account === null)
+      return prodWrite(
+        `This command sets ${name} in a way the guard cannot read, so Wrangler may target an account other than catati-dev. For dev, leave it unset or export ${ACCOUNTS.dev} plainly.`
+      )
+    if (account !== undefined && account !== ACCOUNTS.dev)
+      return prodWrite(
+        `${name}=${account} sends this Wrangler command to an account other than catati-dev, whatever --env says. For dev, leave it unset or use ${ACCOUNTS.dev}.`
+      )
+  }
+  const hidden = wranglerOptions(args).filter(hides)
+  if (hidden.length)
     return prodWrite(
-      `This command sets CLOUDFLARE_ACCOUNT_ID in a way the guard cannot read, so Wrangler may target an account other than catati-dev. For dev, leave it unset or export ${ACCOUNTS.dev} plainly.`
-    )
-  if (account !== undefined && account !== ACCOUNTS.dev)
-    return prodWrite(
-      `CLOUDFLARE_ACCOUNT_ID=${account} sends this Wrangler command to an account other than catati-dev, whatever --env says. For dev, leave it unset or use ${ACCOUNTS.dev}.`
+      `This Wrangler command has a word the shell may split or turn into a flag (${hidden.join(' ')}), so the guard cannot tell its --env or whether it only reads. ${QUOTE_VARIABLES}`
     )
   if (wranglerReadOnly(args)) return allow
   const targets = flagValues(wranglerOptions(args), '--env', '-e')
@@ -1562,14 +1678,18 @@ function wranglerDecision(args, env) {
 
 function shopifyDecision(args) {
   const words = args.filter((arg) => !arg.startsWith('-')).join(' ')
-  if (!SHOPIFY_WRITES.test(words)) return allow
+  if (!args.some(unknown) && !SHOPIFY_WRITES.test(words)) return allow
   const configs = flagValues(args, '--config', '-c').map((config) =>
     config
       .split('/')
       .pop()
       .replace(/^shopify\.app\.|\.toml$/g, '')
   )
-  if (configs.length > 0 && configs.every((config) => config === 'dev'))
+  if (
+    !args.some(hides) &&
+    configs.length > 0 &&
+    configs.every((config) => config === 'dev')
+  )
     return allow
   return prodWrite(
     'This Shopify command can change the production app or store. For dev, pass --config dev.'
@@ -1646,27 +1766,45 @@ function programDecision(words, { env, name, args }, context) {
   if (name === 'git') return gitRunsString(args, words)
   if (name === 'curl' && PULLS_PATH.test(words) && curlPut(args))
     return wrappedMerge('gh merge', name)
-  if (HTTP_CLIENTS.has(name) && githubRunTarget(args) && httpWrites(name, args))
-    return WORKFLOW_RUN
+  if (HTTP_CLIENTS.has(name)) {
+    const target = githubRunTarget(args)
+    const writes = httpWrites(name, args)
+    if (target && writes) return WORKFLOW_RUN
+    if (
+      (target && args.some(hides)) ||
+      (writes && args.some(unknown)) ||
+      args.some((arg) => arg.includes(SPLIT))
+    )
+      return ask(
+        `This HTTP call has a word the shell fills in later (${args.filter(unknown).join(' ')}), so the guard cannot tell whether it starts or approves a GitHub Actions run. ${QUOTE_VARIABLES}`
+      )
+  }
   if (name === 'wrangler') return wranglerDecision(args, wranglerEnv(env, context))
   if (name === 'shopify') return shopifyDecision(args)
   if (name === 'make' && MAKE_PROD.test(args.join(' ')))
     return prodWrite(
       'This make target deploys to production (deploy-prod or ENV=prod).'
     )
+  if (name === 'make' && args.some(unknown))
+    return prodWrite(
+      `This make command has a word the shell fills in later (${args.filter(unknown).join(' ')}), so the guard cannot tell whether it runs deploy-prod or ENV=prod. Write the target and variables out.`
+    )
   return wrappedMerge(words, name)
 }
 
 function decideSegment(segment, context) {
   const words = tokens(segment)
-  const parsed = program(words)
-  const nested = nestedCommands(parsed.name, parsed.args)
-  const opaque = OPAQUE_WRAPPERS.has(parsed.name)
+  const read = program(words)
+  const parsed = {
+    ...read,
+    prefix: read.prefix.map(context.resolve),
+    args: read.args.map(context.resolve),
+  }
+  const nested = nestedCommands(read.name, read.args)
+  const opaque = OPAQUE_WRAPPERS.has(read.name)
   const guessed = [
-    ...(opaque ? wordSuffixes(parsed.args) : []),
-    ...(INTERPRETER.test(parsed.name)
-      ? parsed.args.flatMap(stringLiterals)
-      : []),
+    ...(opaque ? wordSuffixes(read.args) : []),
+    ...(INTERPRETER.test(read.name) ? read.args.flatMap(stringLiterals) : []),
   ]
   const base = parsed.raw.split('/').pop()
   const splitsWord =
@@ -1684,9 +1822,14 @@ function decideSegment(segment, context) {
       /[$`]/.test(splitsWord ? parsed.raw : base) &&
       PROD_PAYLOAD.test(parsed.args.join(' '))
     : unreadableWord
+  const hiddenPrefix = context.guessing
+    ? []
+    : parsed.prefix.filter((word) => hides(word) && !ASSIGNMENT.test(word))
   let direct = []
   if (nested !== null)
-    direct = nested.map((command) => decideCommand(command, context))
+    direct = nested.map((command) =>
+      decideCommand(command, { ...context, resolve: (word) => word })
+    )
   else if (!opaque) direct = [programDecision(words.join(' '), parsed, context)]
   return combine([
     substitutedMerge(segment),
@@ -1694,6 +1837,10 @@ function decideSegment(segment, context) {
     unreadable &&
       ask(
         `The program word \`${parsed.raw}\` comes from a variable, a substitution, a glob or a brace, so the guard cannot tell what runs. Write the program name out.`
+      ),
+    hiddenPrefix.length > 0 &&
+      ask(
+        `A word before the program (${hiddenPrefix.join(' ')}) may split into more words, so the guard cannot tell what runs. ${QUOTE_VARIABLES}`
       ),
     ...direct,
     ...guessed.map((command) => guess(command, context)),
@@ -1716,7 +1863,7 @@ function combine(results) {
 }
 
 function changedDir(cwd, target = homedir(), subshell) {
-  if (!cwd || subshell || /^-|[$`*?[]/.test(target)) return null
+  if (!cwd || subshell || /^-|[\0$`*?[]/.test(target)) return null
   return resolve(cwd, target.replace(/^~(?=\/|$)/, homedir()))
 }
 
@@ -1738,7 +1885,7 @@ function movedContext(context, { text, subshell }) {
   if (DECLARATION_BUILTINS.has(name) && !subshell) {
     const exported = { ...next.exported }
     for (const arg of args) {
-      const assignment = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(arg)
+      const assignment = ASSIGNMENT.exec(arg)
       if (assignment) exported[assignment[1]] = assignment[2]
     }
     next = { ...next, exported }
@@ -1772,9 +1919,17 @@ function decideBash(command, context) {
   const cloudCli =
     CLI.test(command) &&
     PROD_TARGET.test(command) &&
-    !(READ_VERB.test(command) && !WRITE_VERB.test(command))
+    !(
+      READ_VERB.test(command) &&
+      !WRITE_VERB.test(command) &&
+      !/[$`]/.test(command)
+    )
   return combine([
-    decideCommand(command, { ...context, reassigned: reassignedNames(command) }),
+    decideCommand(command, {
+      ...context,
+      reassigned: reassignedNames(command),
+      resolve: loopResolver(loopValues(command)),
+    }),
     shellFedMerge(command, context.seen),
     cloudCli &&
       prodWrite(
