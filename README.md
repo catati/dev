@@ -16,7 +16,7 @@ Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Ca
 
 ## Conventions
 
-`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` writes.
+`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` writes, and `templates/labels.json`, the status labels as an array of `name`, `color` and `description` objects. `catati setup` stays offline and creates no labels from it.
 Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
@@ -37,7 +37,9 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 | Check | Fails when |
 | --- | --- |
 | `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` is missing or differs by a byte from `templates/`. |
-| `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint` or `help` target, or no `deploy-dev` target in a repo with a `wrangler.jsonc`. |
+| `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint`, `help`, `format` or `staged-check` target, or no `deploy-dev` target in a repo with a `wrangler.jsonc`. The template git hooks call `make staged-check` before a commit and name `make format` when they refuse one. |
+| `version-source` | A repo with a `wrangler.jsonc` outside `node_modules/` has no root `package.json`, or its `version` is not `MAJOR.MINOR.PATCH`, such as `2.0.0` (no `v`, no leading zero, no pre-release). Or another `package.json` outside `node_modules/` declares a `version`. The root holds the one version the repo ships. A repo with no `wrangler.jsonc` skips this check. |
+| `catati-dev-lock` | The root `pnpm-lock.yaml` or `package-lock.json` resolves `@catati/dev` by any form other than `git+https://github.com/catati/dev.git#<40-hex sha>`, such as SSH, `git@github.com:`, `github:` or a codeload tarball. In `pnpm-lock.yaml` it reads every `@catati/dev` specifier, version and key, and the key under `packages:` must be followed by `resolution: {commit: <that sha>, repo: https://github.com/catati/dev.git, type: git}`. In `package-lock.json` it reads the `resolved` of each `node_modules/@catati/dev` entry and each `@catati/dev` value in a `dependencies`, `devDependencies`, `optionalDependencies` or `peerDependencies` field under `packages`. A `resolved` value may also be `git+ssh://git@github.com/catati/dev.git#<40-hex sha>`, because npm writes that form itself on every install, even for an `https` pin. Every other value in either lockfile must be the `git+https` form. When the root `package.json` pins `@catati/dev` to a commit, every `@catati/dev` resolution in both lockfiles must name that same commit, because a frozen install uses the lockfile and not `package.json`. A finding names the line, or in `package-lock.json` the JSON path. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
 | `workflow-names` | A `.yml` or `.yaml` file in `.github/workflows/` is not `ci.yml` or `deploy.yml`. Other files there, such as a `README.md`, are not workflows, and no check reads them. |
 | `env-names` | A `wrangler.jsonc` has an `env` key other than `dev` or `prod`, a workflow's `environment` is not `dev` or `prod` and does not end in `-dev` or `-prod` (a matrix list is skipped), or an environment word (`production`, `development`, `staging` or `preview`, in any case) names a config file or a Terraform root outside `node_modules/`. A config file is `<base>.<word>.<toml|json|jsonc|yaml|yml>`, such as `shopify.app.production.toml`, `.env.<word>` or `.dev.vars.<word>`. A Terraform root is a folder named `<word>` that directly holds a `.tf` file. Other paths, such as `link-preview.vue` or `production-plans.json`, pass. |
@@ -68,19 +70,24 @@ Other repos can install the package only when `catati/dev` is public (#15).
 To accept a finding for a time, add this line to the file that has the finding:
 
 ```text
-# catati-allow(<check>): <reason>; expires YYYY-MM-DD
+# catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>
 ```
+
+`<name>` is the person who allowed the exception, so each one traces back to a person.
 
 The line turns off that check for every finding in the file that holds it, until the end of the date.
 It covers the whole file, not one line, because some findings have no line of their own. A missing `Makefile` target is an example.
 
-A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD"` in `package.json`.
+A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>"` in `package.json`.
 
 A file that cannot hold a comment or a string, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check.
 A line in `.catati-allow` turns off its check for the whole repo.
 
-An expired or malformed allow line is a finding with the check `allow`.
+An expired or malformed allow line is a finding with the check `allow`, and it turns off nothing.
 A date that does not exist, such as `2026-02-31`, makes the line malformed.
+A line with no `approved by <name>` is a finding too, such as one written before the approver was required.
+
+A repo's own checks use the same format, such as `catati-allow(commentUse): <reason>; expires YYYY-MM-DD; approved by <name>`. In any file other than `.catati-allow`, `catati check` skips a line that names a check it does not have, and leaves that line to the repo check that reads it. So a misspelled check name in such a file turns off nothing and is not reported. `.catati-allow` holds only `catati check` lines, so an unknown check name there is malformed.
 
 To test the package, run `npm test`.
 The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `npm test` on every PR and on each push to `main`.

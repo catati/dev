@@ -1,0 +1,6 @@
+[
+	{ "name": "todo", "color": "c5def5", "description": "Planned and ready to build" },
+	{ "name": "doing", "color": "fbca04", "description": "A builder has it" },
+	{ "name": "review", "color": "0075ca", "description": "Its PR is open" },
+	{ "name": "blocked", "color": "d73a4a", "description": "Waits on a human" }
+]

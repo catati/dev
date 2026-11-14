@@ -9,13 +9,14 @@ import { checks } from '../lib/check.mjs';
 const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
 const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
 
-const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true', 'lint help:', '\t@true', ''].join('\n');
+const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true', 'lint help format staged-check:', '\t@true', ''].join('\n');
 
 function cleanRepo() {
 	return {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
 		'.github/workflows/ci.yml': 'on: push\n',
 		Makefile: cleanMakefile,
+		'package.json': '{ "version": "1.0.0" }\n',
 		'.env.example': 'KEY=\n',
 		'web/.env.example': 'KEY=\n',
 		'.env': 'KEY=real\n',
@@ -65,8 +66,13 @@ test('templates-equal flags a changed and a missing template', (t) => {
 });
 
 test('make-targets flags each missing core target', (t) => {
-	const files = { ...cleanRepo(), Makefile: 'install test verify lint help:\n\t@true\ne2e-test:\n\t@true\nE2E := e2e\n' };
+	const files = { ...cleanRepo(), Makefile: 'install test verify lint help format staged-check:\n\t@true\ne2e-test:\n\t@true\nE2E := e2e\n' };
 	assert.deepEqual(runCheck(files, t), { status: 1, lines: ['make-targets: Makefile: no target e2e'] });
+	const hooksMissing = { ...cleanRepo(), Makefile: 'install test e2e verify lint help:\n\t@true\nformat-check staged:\n\t@true\n' };
+	assert.deepEqual(runCheck(hooksMissing, t), {
+		status: 1,
+		lines: ['make-targets: Makefile: no target format', 'make-targets: Makefile: no target staged-check'],
+	});
 });
 
 test('ci-workflow flags a CI workflow with another name', (t) => {
@@ -89,8 +95,8 @@ test('env-example flags env templates with another name', (t) => {
 });
 
 test('an allow line suppresses its check until it expires', (t) => {
-	const allowed = 'catati-allow(env-example): tool reads this name; expires 2999-01-01\n';
-	const expired = 'catati-allow(env-example): tool reads this name; expires 2000-01-01\n';
+	const allowed = 'catati-allow(env-example): tool reads this name; expires 2999-01-01; approved by Shien\n';
+	const expired = 'catati-allow(env-example): tool reads this name; expires 2000-01-01; approved by Shien\n';
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${allowed}KEY=\n` }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${expired}KEY=\n` }, t), {
 		status: 1,
@@ -105,7 +111,7 @@ test('a repo-level allow covers files that cannot hold a comment', (t) => {
 	const files = {
 		...cleanRepo(),
 		'.github/ISSUE_TEMPLATE/issue.yml': 'name: Issue\n',
-		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2999-01-01\n',
+		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2999-01-01; approved by Shien\n',
 	};
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 });
@@ -134,10 +140,52 @@ test('a file it cannot read prints one line naming the path and exits with 2', (
 });
 
 test('an allow line with a date that does not exist is malformed', (t) => {
-	const line = 'catati-allow(env-example): tool reads this name; expires 2999-02-31';
+	const line = 'catati-allow(env-example): tool reads this name; expires 2999-02-31; approved by Shien';
 	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `# ${line}\nKEY=\n` }, t), {
 		status: 1,
 		lines: ['env-example: example.env: env template is not named .env.example', `allow: example.env: malformed allow: # ${line}`],
+	});
+});
+
+test('an allow line that names a repo check is left to that check', (t) => {
+	const lines = [
+		'# catati-allow(commentUse): generated file; expires 2999-01-01; approved by Shien',
+		'# catati-allow(readmeDrift): older table; expires 2000-01-01; approved by Shien',
+		'# catati-allow(versionBumpMissing): docs only',
+	];
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': `${lines.join('\n')}\nKEY=\n` }, t), {
+		status: 1,
+		lines: ['env-example: example.env: env template is not named .env.example'],
+	});
+	const repoWide = 'catati-allow(commentUse): generated file; expires 2999-01-01; approved by Shien';
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': 'KEY=\n', '.catati-allow': `${repoWide}\n` }, t), {
+		status: 1,
+		lines: ['env-example: example.env: env template is not named .env.example', `allow: .catati-allow: malformed allow: ${repoWide}`],
+	});
+});
+
+test('an allow line that names no approver does not suppress its check', (t) => {
+	const unapproved = (by) => `# catati-allow(env-example): tool reads this name; expires 2999-01-01${by}\nKEY=\n`;
+	for (const by of ['', '; approved by', '; approved by ']) {
+		assert.deepEqual(runCheck({ ...cleanRepo(), 'example.env': unapproved(by) }, t), {
+			status: 1,
+			lines: [
+				'env-example: example.env: env template is not named .env.example',
+				'allow: example.env: catati-allow(env-example) names no approver; end the line with "; approved by <name>"',
+			],
+		}, JSON.stringify(by));
+	}
+	const files = {
+		...cleanRepo(),
+		'.github/ISSUE_TEMPLATE/issue.yml': 'name: Issue\n',
+		'.catati-allow': 'catati-allow(templates-equal): migrating to the shared template; expires 2000-01-01\n',
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'templates-equal: .github/ISSUE_TEMPLATE/issue.yml: differs from templates/issue.yml',
+			'allow: .catati-allow: catati-allow(templates-equal) names no approver; end the line with "; approved by <name>"',
+		],
 	});
 });
 
@@ -299,6 +347,155 @@ test('make-targets also needs deploy-dev when the repo has a wrangler.jsonc', (t
 	});
 });
 
+test('version-source needs one MAJOR.MINOR.PATCH version, in the root package.json, in a repo with a wrangler.jsonc', (t) => {
+	const clean = {
+		...cleanRepo(),
+		Makefile: deployMakefile,
+		'api/wrangler.jsonc': cleanWrangler,
+		'package.json': '{ "name": "repo", "version": "2.0.0" }\n',
+		'api/package.json': '{ "name": "api" }\n',
+		'node_modules/dep/package.json': '{ "version": "1.0.0" }\n',
+	};
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const noWorker = { ...cleanRepo(), 'package.json': '{}\n', 'api/package.json': '{ "version": "1.0.0" }\n' };
+	assert.deepEqual(runCheck(noWorker, t), { status: 0, lines: [] });
+	for (const version of ['"2.0"', '"v2.0.0"', '"02.0.0"', '"2.0.0-beta"', '2']) {
+		assert.deepEqual(runCheck({ ...clean, 'package.json': `{ "version": ${version} }\n` }, t), {
+			status: 1,
+			lines: [`version-source: package.json: version ${version} is not MAJOR.MINOR.PATCH`],
+		});
+	}
+	assert.deepEqual(runCheck({ ...clean, 'package.json': '{ "name": "repo" }\n', 'landing/package.json': '{ "version": "1.0.1" }\n' }, t), {
+		status: 1,
+		lines: [
+			'version-source: package.json: has no version; add one such as "1.0.0"',
+			'version-source: landing/package.json: declares its own version; only the root package.json holds one',
+		],
+	});
+	assert.deepEqual(runCheck({ ...clean, 'package.json': undefined }, t), {
+		status: 1,
+		lines: ['version-source: package.json: file is missing'],
+	});
+	assert.deepEqual(runCheck({ ...clean, 'package.json': '{ "version": ' }, t), {
+		status: 1,
+		lines: ['version-source: package.json: cannot parse as JSON'],
+	});
+});
+
+const lockFixture = (name) => readFileSync(new URL(`fixtures/catati-dev-lock/${name}`, import.meta.url), 'utf8');
+const devSha = '17cbb087dc1f79710b4e5ef49b66aa68c931a66c';
+const pnpmLock = lockFixture('pnpm-lock.yaml');
+const npmLock = lockFixture('package-lock.json');
+const npmHttpsLock = npmLock.replace('git+ssh://git@github.com/', 'git+https://github.com/');
+const pnpmLockWith = (line, text) => pnpmLock.split('\n').map((l, i) => (i === line - 1 ? text : l)).join('\n');
+const lockLines = (result) => result.lines.map((l) => Number(l.match(/^catati-dev-lock: pnpm-lock\.yaml: line (\d+) /)?.[1]));
+
+test('catati-dev-lock passes a lockfile that pins @catati/dev to git+https at a commit', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLock }, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': npmHttpsLock }, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': npmLock }, t), { status: 0, lines: [] });
+	const noPin = JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'x' } } });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': noPin, 'web/pnpm-lock.yaml': pnpmLockWith(15, '        specifier: x') }, t), {
+		status: 0,
+		lines: [],
+	});
+});
+
+test('catati-dev-lock flags each pnpm entry that resolves @catati/dev another way, at its line', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLockWith(16, `        version: git+ssh://git@github.com/catati/dev.git#${devSha}`) }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: pnpm-lock.yaml: line 16 resolves @catati/dev to git+ssh://git@github.com/catati/dev.git#${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+		],
+	});
+	const resolution = (fields) => `    resolution: {${fields}}`;
+	for (const [line, text] of [
+		[15, '        specifier: git+https://github.com/catati/dev.git#main'],
+		[15, `        specifier: git+https://github.com/catati/dev.git#${devSha.slice(0, 7)}`],
+		[16, `        version: git+https://git@github.com:catati/dev.git#${devSha}`],
+		[16, `        version: https://codeload.github.com/catati/dev/tar.gz/${devSha}`],
+		[27, `  '@catati/dev@ssh://git@github.com/catati/dev.git#${devSha}':`],
+		[27, `  '@catati/dev@git+https://github.com/someone/dev.git#${devSha}':`],
+		[28, resolution(`tarball: https://codeload.github.com/catati/dev/tar.gz/${devSha}`)],
+		[28, resolution(`commit: ${devSha}, repo: git@github.com:catati/dev.git, type: git`)],
+		[28, resolution(`commit: ${'0'.repeat(40)}, repo: https://github.com/catati/dev.git, type: git`)],
+		[43, `  '@catati/dev@https://codeload.github.com/catati/dev/tar.gz/${devSha}': {}`],
+	]) {
+		assert.deepEqual(lockLines(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLockWith(line, text) }, t)), [line], text);
+	}
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLockWith(28, resolution(`tarball: https://codeload.github.com/catati/dev/tar.gz/${devSha}`)) }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: pnpm-lock.yaml: line 28 is resolution: {tarball: https://codeload.github.com/catati/dev/tar.gz/${devSha}}; use resolution: {commit: ${devSha}, repo: https://github.com/catati/dev.git, type: git}`,
+		],
+	});
+});
+
+test('catati-dev-lock accepts the git+ssh resolved form that npm writes, and flags every other npm form', (t) => {
+	const resolvedAs = (resolved) => {
+		const lock = JSON.parse(npmLock);
+		lock.packages['node_modules/@catati/dev'].resolved = resolved;
+		return JSON.stringify(lock, null, 2);
+	};
+	for (const resolved of [
+		`git+ssh://git@gitlab.com/catati/dev.git#${devSha}`,
+		`git+ssh://git@github.com/someone/dev.git#${devSha}`,
+		'git+ssh://git@github.com/catati/dev.git#main',
+		`ssh://git@github.com/catati/dev.git#${devSha}`,
+	]) {
+		assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': resolvedAs(resolved) }, t), {
+			status: 1,
+			lines: [`catati-dev-lock: package-lock.json: packages["node_modules/@catati/dev"].resolved is ${resolved}; use git+https://github.com/catati/dev.git#<sha>`],
+		}, resolved);
+	}
+	const sshSpec = JSON.parse(npmLock);
+	sshSpec.packages[''].devDependencies['@catati/dev'] = `git+ssh://git@github.com/catati/dev.git#${devSha}`;
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': JSON.stringify(sshSpec, null, 2) }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: package-lock.json: packages[""].devDependencies["@catati/dev"] is git+ssh://git@github.com/catati/dev.git#${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+		],
+	});
+	const lock = JSON.parse(npmHttpsLock);
+	lock.packages[''].devDependencies['@catati/dev'] = 'github:catati/dev';
+	lock.packages['node_modules/tool'] = { version: '1.0.0', dependencies: { '@catati/dev': `git@github.com:catati/dev.git#${devSha}` } };
+	lock.packages['node_modules/tool/node_modules/@catati/dev'] = { resolved: `https://codeload.github.com/catati/dev/tar.gz/${devSha}` };
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': JSON.stringify(lock, null, 2) }, t), {
+		status: 1,
+		lines: [
+			'catati-dev-lock: package-lock.json: packages[""].devDependencies["@catati/dev"] is github:catati/dev; use git+https://github.com/catati/dev.git#<sha>',
+			`catati-dev-lock: package-lock.json: packages["node_modules/tool"].dependencies["@catati/dev"] is git@github.com:catati/dev.git#${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+			`catati-dev-lock: package-lock.json: packages["node_modules/tool/node_modules/@catati/dev"].resolved is https://codeload.github.com/catati/dev/tar.gz/${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+		],
+	});
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': '{ "packages": ' }, t), {
+		status: 1,
+		lines: ['catati-dev-lock: package-lock.json: cannot parse as JSON'],
+	});
+});
+
+test('catati-dev-lock flags a lockfile commit that differs from the one package.json pins', (t) => {
+	const otherSha = '0123456789abcdef0123456789abcdef01234567';
+	const pinning = (sha) => JSON.stringify({ version: '1.0.0', devDependencies: { '@catati/dev': `git+https://github.com/catati/dev.git#${sha}` } });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package.json': pinning(devSha), 'pnpm-lock.yaml': pnpmLock, 'package-lock.json': npmLock }, t), {
+		status: 0,
+		lines: [],
+	});
+	const pnpm = runCheck({ ...cleanRepo(), 'package.json': pinning(otherSha), 'pnpm-lock.yaml': pnpmLock }, t);
+	assert.deepEqual(lockLines(pnpm), [15, 16, 27, 43]);
+	assert.equal(
+		pnpm.lines[0],
+		`catati-dev-lock: pnpm-lock.yaml: line 15 resolves @catati/dev to git+https://github.com/catati/dev.git#${devSha}; package.json pins ${otherSha}`,
+	);
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package.json': pinning(otherSha), 'package-lock.json': npmLock }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: package-lock.json: packages[""].devDependencies["@catati/dev"] is git+https://github.com/catati/dev.git#${devSha}; package.json pins ${otherSha}`,
+			`catati-dev-lock: package-lock.json: packages["node_modules/@catati/dev"].resolved is git+ssh://git@github.com/catati/dev.git#${devSha}; package.json pins ${otherSha}`,
+		],
+	});
+});
+
 test('resource-names flags a Wrangler resource that is not <repo>-<component> or ends in an env', (t) => {
 	const config = (names) =>
 		JSON.stringify({
@@ -325,13 +522,13 @@ test('resource-names flags a Wrangler resource that is not <repo>-<component> or
 });
 
 test('allow lines cover the new checks in a JSONC comment and in .catati-allow', (t) => {
-	const config = cleanWrangler.replace('"repo-api", /* top level */', '"catati-repo-api", // catati-allow(resource-names): renamed later; expires 2999-01-01');
+	const config = cleanWrangler.replace('"repo-api", /* top level */', '"catati-repo-api", // catati-allow(resource-names): renamed later; expires 2999-01-01; approved by Shien');
 	const files = {
 		...cleanRepo(),
 		Makefile: deployMakefile,
 		'wrangler.jsonc': config,
-		'package.json': JSON.stringify({ scripts: { deploy: 'wrangler deploy' } }),
-		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01\n',
+		'package.json': JSON.stringify({ version: '1.0.0', scripts: { deploy: 'wrangler deploy' } }),
+		'.catati-allow': 'catati-allow(wrangler-envs): deploy script moves to deploy-dev; expires 2999-01-01; approved by Shien\n',
 	};
 	assert.deepEqual(runCheck(files, t, { origin: 'https://github.com/catati/repo' }), { status: 0, lines: [] });
 });
@@ -377,7 +574,7 @@ test('wrangler-envs reads -e, make prefixes, versioned wrangler and flag values'
 test('workflow-names reads the workflows it flags, so an allow line in one works', (t) => {
 	const workflow = '.github/workflows/plan.yml';
 	assert.ok(checks.find((c) => c.id === 'workflow-names').reads([workflow, '.github/workflows/ci.yml']).includes(workflow));
-	const files = { ...cleanRepo(), [workflow]: '# catati-allow(workflow-names): renamed later; expires 2999-01-01\non: push\n' };
+	const files = { ...cleanRepo(), [workflow]: '# catati-allow(workflow-names): renamed later; expires 2999-01-01; approved by Shien\non: push\n' };
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 });
 
@@ -584,7 +781,7 @@ test('a JSON file carries its allow line in a string value', (t) => {
 	const files = {
 		...cleanRepo(),
 		'package.json': JSON.stringify(
-			{ '//': 'catati-allow(wrangler-envs): legacy deploy; expires 2999-01-01', scripts: { deploy: 'wrangler deploy' } },
+			{ '//': 'catati-allow(wrangler-envs): legacy deploy; expires 2999-01-01; approved by Shien', scripts: { deploy: 'wrangler deploy' } },
 			null,
 			2,
 		),

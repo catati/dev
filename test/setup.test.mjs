@@ -221,7 +221,7 @@ test('--dry-run prints what a run would do and writes nothing', (t) => {
 });
 
 test('--dry-run shows the findings that would be left after setup', (t) => {
-	const makefile = ['install test e2e verify lint help:', '\t@true', ''].join('\n');
+	const makefile = ['install test e2e verify lint help format staged-check:', '\t@true', ''].join('\n');
 	const box = sandbox(t, { files: { Makefile: makefile, '.github/workflows/ci.yml': 'on: push\n' } });
 	assert.deepEqual(box.run('--dry-run'), { status: 0, lines: every('created') });
 });
