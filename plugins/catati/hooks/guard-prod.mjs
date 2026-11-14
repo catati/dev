@@ -1049,12 +1049,26 @@ const NAME_USE = /\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/g
 const usedNames = (text) =>
   [...text.matchAll(NAME_USE)].map((match) => match[1] ?? match[2])
 
+const CHANGES_NAMES = new RegExp(
+  String.raw`[$\x60{}[\]*?]|\(\(|${DECLARING}|\b(?:unset|let|wait|coproc|source|builtin|enable|trap|alias)\b|(?:^|[\s;&|(])\.\s`
+)
+const RUNS_NEXT_WORD = new Set(['command', 'builtin', 'time', 'exec'])
+
+const mentioned = (name, rest) =>
+  new RegExp(String.raw`(?<!\w)${name}(?!\w)`).test(
+    rest.replace(
+      new RegExp(String.raw`\bfor\s+${name}\s+in\b[^;&|<>()\n]*`, 'g'),
+      ' '
+    )
+  )
+
 function loopValues(command) {
   const text = unquoted(command)
   const values = new Map()
   if (namesUnreadable(command, text) || /\bIFS\b/.test(text)) return values
   const outside = new Set()
   const open = []
+  let computedProgram = false
   for (const item of split(command)) {
     if (item.kind !== 'segment') {
       for (const name of usedNames(item.text ?? '')) outside.add(name)
@@ -1062,6 +1076,10 @@ function loopValues(command) {
     }
     const words = tokens(item.text)
     const head = words.slice(Math.max(0, words.findIndex((w) => !KEYWORDS.has(w))))
+    const program = head.find(
+      (w) => !/^\w+=/.test(w) && !RUNS_NEXT_WORD.has(w) && !w.startsWith('-')
+    )
+    if (/[$`]/.test(program ?? '')) computedProgram = true
     if (head[0] === 'done') open.pop()
     for (const name of usedNames(item.text))
       if (!open.includes(name)) outside.add(name)
@@ -1074,8 +1092,12 @@ function loopValues(command) {
       open.push(plain ? name : null)
     } else if (['while', 'until', 'select'].includes(head[0])) open.push(null)
   }
+  const rest = text.replace(NAME_USE, (use, braced, bare) =>
+    values.has(braced ?? bare) ? ' ' : use
+  )
+  if (computedProgram || CHANGES_NAMES.test(rest)) return new Map()
   for (const name of values.keys())
-    if (outside.has(name) || assignedOutsideLoop(name, text)) values.delete(name)
+    if (outside.has(name) || mentioned(name, rest)) values.delete(name)
   return values
 }
 
