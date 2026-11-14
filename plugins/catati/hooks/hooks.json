@@ -10,17 +10,6 @@
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash|mcp__cloudflare__execute|mcp__Shopify__.*|mcp__github__actions_run_trigger",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/prod-guard.mjs\""
-          }
-        ]
-      }
-    ],
     "WorktreeCreate": [
       {
         "hooks": [

@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { JUDGED_TOOLS } from '../plugins/catati/hooks/prod-guard.mjs';
 
 const repo = new URL('..', import.meta.url).pathname;
 const readJson = (path) => JSON.parse(readFileSync(join(repo, path), 'utf8'));
@@ -43,23 +40,9 @@ test('the SessionStart hook runs the session setup from the plugin root', () => 
 	assert.deepEqual(commandsOf('SessionStart'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"']);
 });
 
-function unsentTools(matcherSource, tools = JUDGED_TOOLS) {
-	const matcher = new RegExp(`^(?:${matcherSource})$`);
-	return tools.filter((tool) => !matcher.test(tool));
-}
-
-test('one PreToolUse hook runs the prod guard, and its matcher sends every tool the guard judges and nothing else', () => {
-	assert.equal(hooks.PreToolUse.length, 1);
-	assert.deepEqual(commandsOf('PreToolUse'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/prod-guard.mjs"']);
-	const { matcher } = hooks.PreToolUse[0];
-	assert.deepEqual(unsentTools(matcher), [], `hooks.json does not send ${unsentTools(matcher).join(', ')} to the prod guard`);
-	const unjudged = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Read', 'mcp__github__merge_pull_request', 'mcp__github__enable_pr_auto_merge', 'mcp__github__actions_list'];
-	assert.deepEqual(unsentTools(matcher, unjudged), unjudged);
-});
-
-test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs from the plugin root', () => {
+test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs, and the plugin has no other hook, so no PreToolUse prod guard', () => {
 	for (const event of ['WorktreeCreate', 'WorktreeRemove']) assert.deepEqual(commandsOf(event), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/worktree.mjs"']);
-	assert.deepEqual(Object.keys(hooks).sort(), ['PreToolUse', 'SessionStart', 'WorktreeCreate', 'WorktreeRemove']);
+	assert.deepEqual(Object.keys(hooks).sort(), ['SessionStart', 'WorktreeCreate', 'WorktreeRemove']);
 });
 
 test('every hook module imports only files inside the plugin, because a synced plugin holds only its own folder', () => {
@@ -73,25 +56,4 @@ test('every hook module imports only files inside the plugin, because a synced p
 			assert.ok(existsSync(resolved), `${name} imports missing ${target}`);
 		}
 	}
-});
-
-test('the PreToolUse command, run as Claude Code runs it, asks for a Wrangler deploy with no env from a folder that is no repo', (t) => {
-	const parent = mkdtempSync(join(tmpdir(), 'catati-pre-tool-'));
-	t.after(() => rmSync(parent, { recursive: true, force: true }));
-	const [command] = commandsOf('PreToolUse');
-	const run = (tool_name, tool_input) => {
-		const result = spawnSync('sh', ['-c', command], {
-			cwd: parent,
-			input: JSON.stringify({ tool_name, tool_input, cwd: parent }),
-			encoding: 'utf8',
-			env: { PATH: process.env.PATH, HOME: parent, CLAUDE_PLUGIN_ROOT: pluginRoot, CLAUDE_PROJECT_DIR: parent },
-		});
-		assert.equal(result.status, 0, result.stderr);
-		return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : null;
-	};
-	const asked = run('Bash', { command: 'wrangler deploy --config /nonexistent/wrangler.jsonc' });
-	assert.equal(asked.hookEventName, 'PreToolUse');
-	assert.equal(asked.permissionDecision, 'ask');
-	assert.match(asked.permissionDecisionReason, /production Worker/);
-	assert.equal(run('Bash', { command: 'wrangler deploy --env dev' }), null);
 });
