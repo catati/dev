@@ -16,7 +16,7 @@ Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Ca
 
 ## Conventions
 
-`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` writes.
+`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the guards. `templates/` holds the files that `catati setup` writes, and `templates/labels.json`, the status labels as an array of `name`, `color` and `description` objects. `catati setup` stays offline and creates no labels from it.
 Each rule names its check. A rule marked `catati check` fails `make verify` when it breaks. A rule marked `judgment` needs a reviewer.
 
 - [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, make targets, CI checks, files and labels, and the recorded exceptions.
