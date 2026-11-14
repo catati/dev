@@ -56,7 +56,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 
 ## The `apply-prod` job
 
-`apply-prod` is the only way a Terraform change reaches prod. It is a job in the Terraform repo's `deploy.yml`. A push to `main` runs `apply-dev`, then `plan-prod`, which writes the prod plan for that commit to the job summary.
+`apply-prod` is the only way a Terraform change reaches prod. It is a job in the Terraform repo's `deploy.yml`. A push to `main` runs `apply-dev` and, alongside it, `plan-prod`, which writes the prod plan for that commit to the job summary.
 
 | Rule | Check |
 | --- | --- |
