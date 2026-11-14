@@ -1658,3 +1658,43 @@ test('Bash: here-strings to source, GitHub URLs in any curl form, and $ commands
   ])
     assert.equal(sh(command), null, command)
 })
+
+test('guard: a program word the shell splits, a GraphQL run behind a comma or comment, a switched-off read flag, a runner workspace, a wrangler entry file and an exported account all ask', () => {
+  for (const command of [
+    'W="make deploy-prod "; $W/x',
+    '$(printf "make deploy-prod ")/x',
+    'W="npx wrangler deploy --env prod "; $W/x',
+    'W="gh workflow run deploy.yml "; $W/x',
+    '`echo make deploy-prod`/x',
+    'gh api graphql -f query=\'mutation { a: rerequestCheckSuite,(input:{repositoryId:"x",checkSuiteId:"y"}) { clientMutationId } }\'',
+    'gh api graphql -f query=\'mutation { rerequestCheckSuite #c\n (input:{repositoryId:"x",checkSuiteId:"y"}) { clientMutationId } }\'',
+    'npx wrangler deploy --env prod --dry-run false',
+    'npx wrangler deploy --env prod --dry-run 0',
+    'npx wrangler deploy --env prod --dry-run=false',
+    'npx wrangler d1 execute cat-hotel --env prod --local false --command "DELETE FROM b"',
+    'npm exec --workspace api -- wrangler deploy --env prod',
+    'npm exec -w api -- wrangler deploy --env prod',
+    'npx -w api wrangler deploy --env prod',
+    'node --no-warnings node_modules/wrangler/bin/wrangler.js deploy --env prod',
+    'node node_modules/wrangler/wrangler-dist/cli.js deploy --env prod',
+    'bun node_modules/wrangler/bin/wrangler.js deploy --env prod',
+    'export CLOUDFLARE_ACCOUNT_ID=0000; npx wrangler deploy --env dev',
+    'export CLOUDFLARE_ENV=prod; npx wrangler deploy',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    '"$HOME"/bin/tool',
+    '$HOME/.local/bin/uv sync',
+    '${CLAUDE_PLUGIN_ROOT}/hooks/x.mjs',
+    '"$(git rev-parse --show-toplevel)"/scripts/check.sh',
+    'gh api graphql -f query="mutation { addComment(input:{subjectId:\\"x\\", body:\\"rerun the workflow\\"}) { clientMutationId } }"',
+    'npx wrangler deploy --env prod --dry-run',
+    'npx wrangler deploy --env prod --dry-run true',
+    'npx wrangler d1 execute cat-hotel --env prod --local --command "DELETE FROM b"',
+    'npm exec -w api -- wrangler deploy --env dev',
+    'node node_modules/wrangler/bin/wrangler.js whoami',
+    'export FOO=1; npx wrangler deploy --env dev',
+    `export CLOUDFLARE_ACCOUNT_ID=${DEV}; npx wrangler deploy --env dev`,
+  ])
+    assert.equal(sh(command), null, command)
+})

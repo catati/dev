@@ -461,6 +461,18 @@ function graphqlUnread(args, fields) {
   )
 }
 
+function mutationFieldNames(fields) {
+  return fields
+    .map((field) => field.slice(field.indexOf('=') + 1))
+    .filter((value) => /\bmutation\b/i.test(value))
+    .flatMap((value) => {
+      const bare = value
+        .replace(/"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|#[^\n\r]*/g, ' ')
+        .replace(/,/g, ' ')
+      return [...bare.matchAll(/[A-Za-z_]\w*(?!\w|\s*:)/g)].map((m) => m[0])
+    })
+}
+
 function ghApiDecision(args, context) {
   const fields = apiFields(args)
   const { overridden, methods } = apiMethods(args, fields)
@@ -477,12 +489,9 @@ function ghApiDecision(args, context) {
   const target = routes
     .map((route) => route !== null && API_MERGE_ROUTE.exec(route))
     .find(Boolean)
-  const mutation = /\bmutation\b/i.test(fields.join(' '))
-  const calls = [...fields.join(' ').matchAll(/(\w+)\s*\(/g)].map((m) => m[1])
   if (
     routes.includes('graphql') &&
-    mutation &&
-    calls.some((call) => GRAPHQL_RUN_WORD.test(call))
+    mutationFieldNames(fields).some((name) => GRAPHQL_RUN_WORD.test(name))
   )
     return WORKFLOW_RUN
   if (routes.includes('graphql'))
@@ -865,6 +874,8 @@ const VALUE_FLAGS = new Set([
   '-p',
   '--package',
   '--cwd',
+  '-w',
+  '--workspace',
 ])
 const PREFIX_VALUE_FLAGS = new Map([
   ['sudo', ['-u', '-g', '-C', '-D', '-p', '-U', '-r', '-t', '-h', '-R']],
@@ -947,7 +958,10 @@ const OPAQUE_WRAPPERS = new Set([
   'coproc',
 ])
 const STDIN_RUNNERS = new Set(['at', 'batch'])
-const WRANGLER_SCRIPT = /(^|\/)wrangler(\.[cm]?js)?$/
+const WRANGLER_SCRIPT = /(^|\/)(wrangler(\.[cm]?js)?|wrangler-dist\/cli\.[cm]?js)$/
+const SCRIPT_RUNTIMES = new Set(['node', 'nodejs', 'bun', 'deno', 'tsx'])
+const PATH_VARIABLE =
+  /^\$(\{(HOME|PWD|CLAUDE_PROJECT_DIR|CLAUDE_PLUGIN_ROOT|TMPDIR)\}|(HOME|PWD|CLAUDE_PROJECT_DIR|CLAUDE_PLUGIN_ROOT|TMPDIR)(?!\w))/
 const XARGS_VALUE_FLAGS = new Set(['-I', '-d', '-E', '-L', '-n', '-P', '-s', '-a'])
 const PROD_PAYLOAD = /\bprod(uction)?\b|-eprod\b|dispatches/i
 const SOURCES = new Set(['source', '.'])
@@ -1244,6 +1258,7 @@ function ansiEscape(text, at) {
 
 function tokens(segment) {
   const words = []
+  words.split = new Set()
   let word = null
   let quote = null
   for (let i = 0; i < segment.length; i += 1) {
@@ -1270,6 +1285,13 @@ function tokens(segment) {
     } else if (ch === '#' && word === null) break
     else {
       word ??= ''
+      if (
+        ch === '`' ||
+        (ch === '$' &&
+          segment[i + 1] !== "'" &&
+          !PATH_VARIABLE.test(segment.slice(i)))
+      )
+        words.split.add(words.length)
       if (ch === '$' && segment[i + 1] === "'") {
         quote = '$'
         i += 1
@@ -1287,6 +1309,7 @@ function tokens(segment) {
 function program(input) {
   const words = [...input]
   const env = {}
+  let spliced = false
   let i = 0
   while (i < words.length) {
     const word = words[i]
@@ -1302,6 +1325,7 @@ function program(input) {
       while (i < words.length && words[i].startsWith('-')) {
         const splitString = base === 'env' && ENV_SPLIT_STRING.exec(words[i])
         if (splitString) {
+          spliced = true
           const inline = splitString[1]
           words.splice(
             i,
@@ -1325,14 +1349,20 @@ function program(input) {
       }
     } else break
   }
+  const index = spliced ? -1 : i
   const raw = (words[i] ?? '').replace(/^\\/, '')
   const name = raw.startsWith('@shopify/cli')
     ? 'shopify'
     : raw.split('/').pop().replace(/@.*$/, '')
   const args = words.slice(i + 1)
-  if (name === 'node' && WRANGLER_SCRIPT.test(args[0] ?? ''))
-    return { env, raw, name: 'wrangler', args: args.slice(1) }
-  return { env, raw, name, args }
+  const script = SCRIPT_RUNTIMES.has(name)
+    ? args.findIndex((arg) => !arg.startsWith('-'))
+    : -1
+  if (script !== -1 && WRANGLER_SCRIPT.test(args[script]))
+    return { env, raw, index, name: 'wrangler', args: args.slice(script + 1) }
+  if (WRANGLER_SCRIPT.test(raw) && raw.includes('/'))
+    return { env, raw, index, name: 'wrangler', args }
+  return { env, raw, index, name, args }
 }
 
 function flagValues(args, long, short) {
@@ -1390,11 +1420,23 @@ function wranglerFlagWords(args) {
   for (let i = 0; i < options.length; i += 1) {
     const arg = options[i]
     if (!arg.startsWith('-')) continue
-    flags.push(arg)
-    if (!arg.includes('=') && !WRANGLER_BOOLEAN_FLAGS.has(arg)) i += 1
+    const [flag, value] = arg.split(/=(.*)/s)
+    const next = options[i + 1]
+    if (value !== undefined) {
+      if (!BOOLEAN_OFF.test(value)) flags.push(flag)
+    } else if (WRANGLER_BOOLEAN_FLAGS.has(arg) && BOOLEAN_WORD.test(next ?? '')) {
+      if (!BOOLEAN_OFF.test(next)) flags.push(arg)
+      i += 1
+    } else {
+      flags.push(arg)
+      if (!WRANGLER_BOOLEAN_FLAGS.has(arg)) i += 1
+    }
   }
   return flags
 }
+
+const BOOLEAN_WORD = /^(true|false|1|0)$/i
+const BOOLEAN_OFF = /^(false|0)$/i
 
 function wranglerReadsWith(args, words) {
   const options = new Set(wranglerFlagWords(args))
@@ -1402,8 +1444,8 @@ function wranglerReadsWith(args, words) {
     return true
   if (
     LOCAL_GROUPS.has(words[0]) &&
-    args.includes('--local') &&
-    !args.includes('--remote')
+    options.has('--local') &&
+    !args.some((arg) => /^--remote(=|$)/.test(arg))
   )
     return true
   if (words.length === 0) return true
@@ -1538,7 +1580,8 @@ function programDecision(words, { env, name, args }, context) {
     return wrappedMerge('gh merge', name)
   if (HTTP_CLIENTS.has(name) && githubRunTarget(args) && httpWrites(name, args))
     return WORKFLOW_RUN
-  if (name === 'wrangler') return wranglerDecision(args, env)
+  if (name === 'wrangler')
+    return wranglerDecision(args, { ...context.exported, ...env })
   if (name === 'shopify') return shopifyDecision(args)
   if (name === 'make' && MAKE_PROD.test(args.join(' ')))
     return prodWrite(
@@ -1559,11 +1602,15 @@ function decideSegment(segment, context) {
       : []),
   ]
   const base = parsed.raw.split('/').pop()
+  const splitsWord =
+    /[$`]/.test(parsed.raw) &&
+    (parsed.index === -1 || words.split.has(parsed.index))
   const unreadableWord =
-    parsed.raw !== '' && (base === '' || UNREADABLE_PROGRAM.test(base))
+    parsed.raw !== '' &&
+    (base === '' || UNREADABLE_PROGRAM.test(base) || splitsWord)
   const unreadable = context.guessing
     ? unreadableWord &&
-      /[$`]/.test(base) &&
+      /[$`]/.test(splitsWord ? parsed.raw : base) &&
       PROD_PAYLOAD.test(parsed.args.join(' '))
     : unreadableWord
   let direct = []
@@ -1609,6 +1656,14 @@ function movedContext(context, { text, subshell }) {
     next = { ...next, cwd: changedDir(next.cwd, args[0], subshell) }
   if (name === 'pushd' || name === 'popd') next = { ...next, cwd: null }
   if (/\bGH_REPO=/.test(text)) next = { ...next, ghRepo: true }
+  if (name === 'export' && !subshell) {
+    const exported = { ...next.exported }
+    for (const arg of args) {
+      const assignment = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(arg)
+      if (assignment) exported[assignment[1]] = assignment[2]
+    }
+    next = { ...next, exported }
+  }
   return next
 }
 
