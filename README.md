@@ -129,14 +129,12 @@ Run it again at any time to bring the repo up to date. A run on a repo that is a
 | File | What `setup` does |
 | --- | --- |
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
-| `.github/CODEOWNERS` | Adds each line of `templates/CODEOWNERS` that the file lacks, at the end and in template order. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
 
 It prints one line per file, as `created <path>`, `updated <path>` or `unchanged <path>`.
 It also deletes each file it used to manage and no longer does, `.github/pull_request_template.md` and `.github/workflows/pr-format.yml`, and prints `removed <path>` for each one it finds. A second run finds none and prints nothing for them. It skips such a path when it is not a regular file or sits under a symlinked directory.
 A copy replaces the whole file when one byte differs, and keeps the file's mode.
-The CODEOWNERS merge keeps every line the repo already has, so a repo can add its own owner rules.
 It prints `skipped <path>: <reason>` and leaves the file as is when it skips a managed path that is not a regular file, such as a symlink.
 It skips a managed path whose parent directory, such as `.github`, is a symlink. If the link leads out of the repo, the line reads `skipped <path>: resolves outside the repo`.
 A link that stays in the repo is skipped too. Git commits the link, not the files behind it, so the files would land at a path the standard does not name.
@@ -147,7 +145,8 @@ It exits with 0, also when it prints findings. If it cannot run, for example out
 If it skipped a file, its last line goes to stderr, as `catati: setup skipped <n> file(s); the standard is not fully applied`, and it still exits with 0.
 A caller such as a skill reads stderr to learn that the repo needs a person to look at the skipped files.
 
-`setup` does not touch the `Makefile`, `ci.yml`, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
+`setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, the `catati/dev` pin, `CLAUDE.md`, or the Biome and tsconfig bases.
+It neither writes nor removes a repo's `.github/CODEOWNERS`. No ruleset asks for code-owner review, so the file enforces nothing, and `catati check-merge` already lists those paths as doors.
 
 catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
 
@@ -175,24 +174,33 @@ The repo's own `.git/config` still applies, so the diff itself sets every option
 | `.gitmodules` | Where each submodule is fetched from. |
 | `**/.npmrc` | The registry that installs, deploys included, fetch packages from. |
 | `env/setup.sh` | The setup script of every cloud session. |
-| `**/package.json` | Deploy and release scripts live in `scripts`. In catati/dev, `bin` also names the gate's entry point. |
+| `**/package.json` | Deploy and release scripts live in `scripts`. In catati/dev, `bin` also names the gate's entry point. A version bump and a `@catati/dev` re-pin are not matches, as below. |
 | `**/Makefile`, `**/GNUmakefile`, `**/*.mk` | Deploy targets. A variable or an `include` can change one without touching its lines, so any change counts. |
 | `**/Dockerfile`, `**/Dockerfile.*`, `**/*.Dockerfile`, `**/Containerfile`, `**/Containerfile.*`, `**/*.Containerfile`, `**/compose*.yml`, `**/compose*.yaml`, `**/docker-compose*` | What the deployed containers run. |
 | `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
 | `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. These count only at the root, so a `firestore.rules` in a subfolder is not a match. |
 | `**/migrations/**` | Data migrations. |
-| `templates/githooks/**`, `templates/CODEOWNERS` | `catati setup` copies these into the Git hooks and code owners of every repo. |
+| `templates/githooks/**` | `catati setup` copies these into the Git hooks of every repo. |
 | `bin/catati.mjs`, `lib/check-merge.mjs`, `lib/repo.mjs` | The gate and every module it loads. It must not be able to pass a change to its own code. A test follows the `check-merge` entry of the command table and fails when it loads a module outside this list, or when any module it loads has an `import()` whose target is not a literal. |
 
 A changed path that holds a control character (U+0000 to U+001F or U+007F) or a line or paragraph separator (U+2028, U+2029) is a match whatever its name. No real file needs such a name, and the gate cannot be sure what a tool downstream makes of it. The gate prints that path with each such character as `\uXXXX`.
 
 Lockfiles are not doors. CI checks a dependency bump, and a door on every lockfile would send every bump to the operator.
 
+Two routine `package.json` changes are not doors either, for the same reason. The gate parses both sides of the file as JSON and compares them with the exempt fields removed. It never reads diff lines.
+
+- A diff that changes only the top-level `version`. Each shipping PR bumps the version, so a door on it would send nearly every PR to the operator.
+- A diff that changes only the `@catati/dev` entry in `dependencies` or `devDependencies`, with or without a `version` change, when the new value is `git+https://github.com/catati/dev.git#<40-hex sha>` and that commit is on catati/dev `main`. The code a re-pin pulls in was reviewed and merged here, and catati/dev sends its own door paths to the operator.
+
+The gate confirms the commit with a treeless clone of `main` from `https://github.com/catati/dev.git`, in a new temporary folder and with the same git config as its other calls, so no repo, user or environment config can point the clone elsewhere. It honours `HTTPS_PROXY` and `GIT_SSL_CAINFO`, as a cloud session needs. A pin it cannot confirm stays a match. When the clone fails, the gate prints `catati: check-merge: cannot fetch main from https://github.com/catati/dev.git, so a @catati/dev pin move stays a door` on stderr and counts the file as a match.
+
+Anything else in a `package.json` stays a match: a file that is added, deleted or changes mode, a side that does not parse, any other change (key order included), a pin in another form or section, and a file whose text says more than `JSON.parse` reads, such as a duplicate or escaped key, which another reader could take differently.
+
 It prints one line per match, as `one-way-door: <path>`, and exits with 1. A symlink adds ` (symlink)` and a submodule adds ` (submodule)` to its line, and a door path that is also a link prints once. With no match, it prints `check-merge: no one-way-door path` and exits with 0.
 With a wrong number of arguments, a base or head that is not a commit, or a run outside a git repo, it prints one line on stderr and exits with 2.
 A failed git call or diff output it cannot parse also exits with 2. That covers only output git prints. An entry that git leaves out is unseen, which is why the gate sets the config that decides what git prints.
 
-A pull request that matches, or whose merge changes production, is the operator's to merge, after a non-author verifier PASS at its head commit and green CI (see [deploy.md](conventions/deploy.md) for who changes prod). A repo's own merge rule can narrow that, as cat-hotel's does for a `package.json` diff that changes only `version`. Every other pull request is merged by the session that owns it once those gates pass.
+A pull request that matches, or whose merge changes production, is the operator's to merge, after a non-author verifier PASS at its head commit and green CI (see [deploy.md](conventions/deploy.md) for who changes prod). Every other pull request is merged by the session that owns it once those gates pass.
 
 The one-way-door rule also names "anything touching production". No path list can prove that a change leaves production alone. Exit 0 means only that no listed path changed.
 A deploy script that a `Makefile` target calls, such as `scripts/deploy.sh`, is an example of a change the list does not see.
