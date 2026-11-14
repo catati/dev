@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { pathToFileURL } from 'node:url'
+import { isMainModule } from './main-module.mjs'
 import { askRule } from './ask-rules.mjs'
 import { decide } from './guard-prod.mjs'
 
@@ -56,4 +56,4 @@ function run() {
   )
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) run()
+if (isMainModule(import.meta.url)) run()

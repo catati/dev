@@ -54,9 +54,9 @@ test('one PreToolUse hook runs the prod guard and the ask rules for every tool t
 	assert.equal(hooks.PreToolUse.length, 1);
 	assert.deepEqual(commandsOf('PreToolUse'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use.mjs"']);
 	const matcher = new RegExp(`^(?:${hooks.PreToolUse[0].matcher})$`);
-	for (const tool of ['Bash', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'mcp__cloudflare__execute', 'mcp__Shopify__graphql_mutation', 'mcp__github__merge_pull_request', 'mcp__github__enable_pr_auto_merge'])
+	for (const tool of ['Bash', 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'mcp__cloudflare__execute', 'mcp__Shopify__graphql_mutation', 'mcp__github__merge_pull_request', 'mcp__github__enable_pr_auto_merge', 'mcp__github__actions_run_trigger'])
 		assert.match(tool, matcher);
-	for (const tool of ['Read', 'Grep', 'mcp__github__get_file_contents']) assert.doesNotMatch(tool, matcher);
+	for (const tool of ['Read', 'Grep', 'mcp__github__get_file_contents', 'mcp__github__actions_list', 'mcp__github__actions_get']) assert.doesNotMatch(tool, matcher);
 });
 
 test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs from the plugin root', () => {

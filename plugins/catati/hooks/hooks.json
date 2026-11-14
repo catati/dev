@@ -16,7 +16,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|MultiEdit|Write|NotebookEdit|mcp__cloudflare__execute|mcp__Shopify__.*|mcp__github__merge_pull_request|mcp__github__enable_pr_auto_merge",
+        "matcher": "Bash|Edit|MultiEdit|Write|NotebookEdit|mcp__cloudflare__execute|mcp__Shopify__.*|mcp__github__merge_pull_request|mcp__github__enable_pr_auto_merge|mcp__github__actions_run_trigger",
         "hooks": [
           {
             "type": "command",
