@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sessionRepos } from './session-start.mjs';
@@ -7,8 +8,8 @@ import { sessionRepos } from './session-start.mjs';
 export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const LOCK_ERROR = /\.lock'?: File exists|Unable to create '[^']*\.lock'|could not lock config file/;
 const LOCK_TRIES = 4;
-const REPO_LOCK_WAIT_MS = 30_000;
-const REPO_LOCK_STALE_MS = 15_000;
+const REPO_LOCK_WAIT_MS = 120_000;
+const REPO_LOCK_STALE_MS = 60_000;
 
 const branchOf = (name) => `worktree-${name}`;
 
@@ -43,10 +44,13 @@ function commonDir(cwd) {
 
 function withRepoLock(repo, work) {
 	const lock = join(commonDir(repo), 'catati-worktree.lock');
+	const owner = join(lock, 'owner');
+	const token = `${process.pid}-${randomUUID()}`;
 	const started = Date.now();
 	for (;;) {
 		try {
 			mkdirSync(lock);
+			writeFileSync(owner, token);
 			break;
 		} catch (error) {
 			if (error.code !== 'EEXIST') throw error;
@@ -71,7 +75,11 @@ function withRepoLock(repo, work) {
 	try {
 		return work();
 	} finally {
-		rmSync(lock, { recursive: true, force: true });
+		let holder = null;
+		try {
+			holder = readFileSync(owner, 'utf8');
+		} catch {}
+		if (holder === token) rmSync(lock, { recursive: true, force: true });
 	}
 }
 
@@ -160,15 +168,32 @@ function tryRmdir(dir) {
 	} catch {}
 }
 
+function nestedWorktrees(repo, path) {
+	const prefixes = [...new Set([resolve(path), realpathSync(path)])].map((dir) => `${dir}/`);
+	return git(['worktree', 'list', '--porcelain'], repo)
+		.split('\n')
+		.filter((line) => line.startsWith('worktree '))
+		.map((line) => line.slice('worktree '.length))
+		.filter((other) => prefixes.some((prefix) => other.startsWith(prefix)));
+}
+
 function removeOne(path) {
+	if (!existsSync(path)) return null;
 	const repo = commonDir(path);
 	const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
 	const base = branch && tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
 	if (!base) return `${path}: kept, not a catati worktree branch`;
 	return withRepoLock(repo, () => {
+		const nested = nestedWorktrees(repo, path);
+		if (nested.length > 0) return `${path}: kept locked, it holds worktree ${nested.join(', ')}`;
 		if (git(['status', '--porcelain', '--untracked-files=all'], path) !== '') return `${path}: kept locked, it has uncommitted changes`;
 		tryGit(['worktree', 'unlock', path], repo);
-		git(['worktree', 'remove', path], repo);
+		try {
+			git(['worktree', 'remove', path], repo);
+		} catch (error) {
+			tryGit(['worktree', 'lock', path], repo);
+			throw error;
+		}
 		const tip = git(['rev-parse', '--verify', `refs/heads/${branch}`], repo);
 		const ahead = Number(git(['rev-list', '--count', `${base}..${tip}`], repo));
 		if (ahead === 0) {

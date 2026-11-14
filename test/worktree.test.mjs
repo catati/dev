@@ -254,10 +254,34 @@ test('a stale repo lock left by a killed hook is cleared', (t) => {
 	const repo = b.repo('repo');
 	const lock = join(repo, '.git', 'catati-worktree.lock');
 	mkdirSync(lock);
-	const old = new Date(Date.now() - 60_000);
+	const old = new Date(Date.now() - 120_000);
 	utimesSync(lock, old, old);
 	assert.equal(b.create('after-crash').status, 0);
 	assert.equal(existsSync(lock), false);
+});
+
+test('remove keeps a worktree that holds another worktree, so the nested one keeps its uncommitted files', (t) => {
+	const b = box(t);
+	const repo = b.repo('dev');
+	const outer = b.create('outer').stdout.trim();
+	const inner = b.create('inner', join(outer, 'dev'));
+	assert.equal(inner.status, 0, inner.stderr);
+	const innerPath = inner.stdout.trim();
+	assert.equal(innerPath, join(outer, 'dev', '.claude', 'worktrees', 'inner'));
+	writeFileSync(join(innerPath, 'draft.txt'), 'wip');
+	const { status, stderr } = b.remove(outer);
+	assert.equal(status, 1);
+	assert.match(stderr, /kept locked, it holds worktree .*inner/);
+	assert.equal(readFileSync(join(innerPath, 'draft.txt'), 'utf8'), 'wip');
+	assert.match(b.worktrees(repo), /worktree-outer\nlocked/);
+});
+
+test('a second remove of a path already removed exits 0', (t) => {
+	const b = box(t);
+	b.repo('repo');
+	const path = b.create('twice').stdout.trim();
+	assert.equal(b.remove(path).status, 0);
+	assert.deepEqual(b.remove(path), { status: 0, stdout: '', stderr: '' });
 });
 
 test('a bare git push from a worktree branch fails', (t) => {
