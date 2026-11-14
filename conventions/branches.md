@@ -7,8 +7,18 @@
 | `main` is the only long-lived branch. | judgment |
 | `catati-horizon` keeps two long-lived branches, `dev` and `main`, until the Horizon spike reports. | judgment |
 | In `catati-horizon`, a work branch starts from `dev` and its PR targets `dev`. | judgment |
-| The `main` ruleset requires the verify checks. | judgment |
-| `shopify[bot]` keeps its ruleset bypass. | judgment |
+
+## Rulesets
+
+Each repo has two branch rulesets on its default branch, `main` and `check`. `main` is one organization ruleset that the operator edits in the `catati` organization's settings. `check` is set per repo, in that repo's settings.
+
+| Rule | Check |
+| --- | --- |
+| The `main` ruleset requires a PR and blocks force pushes and deletion. | judgment |
+| In a repo that a Shopify app writes to, `shopify[bot]` is exempt from the `main` ruleset. | judgment |
+| The `check` ruleset requires the checks that the repo's docs list as required. See [ci.md](ci.md#required-checks). | judgment |
+| The `check` ruleset is strict, so a PR's branch must hold the current `main` before it merges. | judgment |
+| The `check` ruleset has no bypass actor. Every agent acts as the operator's GitHub account, so a bypass the operator holds lets an agent merge a red PR. In an emergency the operator edits the ruleset, and GitHub records that edit. | judgment |
 
 ## Session start
 
