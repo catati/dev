@@ -50,6 +50,10 @@ const rows = {
 			bash('wrangler --unknown tail deploy'),
 			bash(`export CLOUDFLARE_ACCOUNT_ID=${PROD}; wrangler deploy --env dev`),
 			bash(`CLOUDFLARE_ACCOUNT_ID=${PROD}; wrangler deploy --env dev`),
+			bash('2>/dev/null wrangler deploy --env prod'),
+			bash('wrangler deploy -cwrangler.prod.jsonc --env dev'),
+			bash('wrangler secret put X -eproduction'),
+			bash('wrangler deploy --dry-run --env prod --no-dry-run'),
 		],
 		passes: [
 			bash('npx wrangler deploy --env dev'),
@@ -75,6 +79,7 @@ const rows = {
 			bash('wrangler kv key put k v --env prod --local'),
 			bash('wrangler r2 object put b/k --file x --local'),
 			bash(`export CLOUDFLARE_ACCOUNT_ID=${DEV}; wrangler deploy --env dev`),
+			bash('wrangler deploy -e=dev'),
 		],
 	},
 	'Terraform write': {
@@ -99,6 +104,8 @@ const rows = {
 			bash('cd $ROOT && terraform apply'),
 			bash('cd - && terraform destroy'),
 			bash('popd && terraform apply'),
+			bash('terraform refresh -lock=false', TF_PROD),
+			bash('terraform test', TF_PROD),
 		],
 		passes: [
 			bash('terraform -chdir=cat-hotel/dev apply'),
@@ -128,6 +135,8 @@ const rows = {
 			bash('shopify theme push -u --publish'),
 			bash('shopify theme push -d --live'),
 			bash('shopify app deploy --config dev --config prod'),
+			bash('shopify app release --config dev-prod'),
+			bash('shopify app deploy -c shopify.app.dev.prod.toml'),
 		],
 		passes: [
 			bash('shopify app release --config dev'),
@@ -182,6 +191,8 @@ const rows = {
 			trigger({ method: 'run_workflow', workflow_id: '123456', ref: 'main' }),
 			trigger({ method: 'rerun_workflow_run', run_id: 1 }),
 			trigger({ method: 'rerun_failed_jobs', run_id: 1 }),
+			bash('gh api repos/catati/cat-hotel/dispatches -f event_type=deploy'),
+			bash('curl -X POST https://api.github.com/repos/catati/terraform/dispatches'),
 		],
 		passes: [
 			bash('gh workflow run ci.yml'),
@@ -204,6 +215,7 @@ const rows = {
 			cloudflare(DEV, request('DELETE', '/zones/abc/dns_records/1')),
 			cloudflare(PROD, request('POST', '/accounts/x/d1/database/y/query', ', body: { sql: q }')),
 			cloudflare(PROD, request('POST', D1_QUERY, ", body: { sql: 'SELECT 1', sql: 'DELETE FROM b' }")),
+			cloudflare(PROD, `'${D1_QUERY}'; ${request('POST', '/accounts/x/workers/api', ", body: { sql: 'SELECT 1' }")}`),
 		],
 		passes: [
 			cloudflare(DEV, request('POST', `/accounts/${DEV}/workers/scripts/api`)),
@@ -215,8 +227,12 @@ const rows = {
 		],
 	},
 	'Shopify connector write': {
-		asks: ['graphql_mutation', 'update-product', 'set-inventory', 'theme_publish'].map(shopifyTool),
+		asks: [
+			...['graphql_mutation', 'update-product', 'set-inventory', 'theme_publish'].map(shopifyTool),
+			['mcp__Shopify__graphql_query', { query: 'mutation { tagsAdd(id: "x", tags: ["a"]) { node { id } } }' }],
+		],
 		passes: [
+			['mcp__Shopify__graphql_query', { query: 'query { shop { name } }' }],
 			shopifyTool('get-shop-info'),
 			shopifyTool('graphql_query'),
 			shopifyTool('search_products'),
@@ -276,6 +292,63 @@ const rows = {
 			bash('git -c push.negotiate=true push'),
 			bash('git commit -m "docs: wrangler deploy --env prod"'),
 			bash('grep -r "wrangler deploy" .'),
+		],
+	},
+	'Unread expansion': {
+		asks: [
+			bash('shopify app ${VERB:-deploy}'),
+			bash('terraform ap{ply,} -auto-approve', TF_PROD),
+			bash('(( n = 1 << 1 ))\nnpx wrangler deploy\n1'),
+			bash('{fd}<input npx wrangler deploy --env prod'),
+			bash("env $'wrangler' deploy"),
+			bash("shopify theme $'publish'"),
+			bash('echo $(( $(npx wrangler deploy) + 1 ))'),
+			bash('shopify app release --config=$"dev"'),
+		],
+		passes: [bash('diff <(sort a.txt) <(sort b.txt)'), bash("printf $'a\\tb\\n' > out.txt")],
+	},
+	'Shell string': {
+		asks: [
+			bash("bash -ec 'wrangler deploy'"),
+			bash("bash -o pipefail -c 'npx wrangler deploy --env prod'"),
+			bash("sh -c -x -- 'wrangler deploy'"),
+			bash("eval -- 'terraform apply'", TF_PROD),
+			bash("source /dev/stdin <<< 'wrangler deploy'"),
+			bash("echo 'wrangler deploy' | bash -s -- x"),
+			bash('source - <<EOF\nshopify theme publish\nEOF'),
+		],
+		passes: [bash('source .venv/bin/activate && wrangler deploy --env dev'), bash('bash -e scripts/check.sh')],
+	},
+	'Subshell scope': {
+		asks: [
+			bash('{ cd ../dev; } | cat; terraform apply', TF_PROD),
+			bash('cd ../dev & terraform apply', TF_PROD),
+			bash('if a; then if b; then cd ../dev; fi; fi | cat; terraform apply', TF_PROD),
+			bash('cd ../dev |& tee log; terraform apply', TF_PROD),
+			bash('coproc { cd ../dev; }; terraform apply', TF_PROD),
+			bash('(cd ../prod && terraform apply)', '/home/user/terraform/cat-hotel/dev'),
+			bash('cat x | while read l; do export CLOUDFLARE_ENV=dev; done; wrangler deploy'),
+			bash('echo `export CLOUDFLARE_ENV=dev`; wrangler deploy'),
+			bash('(export ENV=prod; make deploy)'),
+		],
+		passes: [
+			bash('{ cd ../dev; terraform apply; }', TF_PROD),
+			bash('(cd ../dev && terraform apply)', TF_PROD),
+			bash('while true; do if x; then cd ../dev; fi; done; terraform apply', TF_PROD),
+			bash(`(export CLOUDFLARE_ACCOUNT_ID=${PROD}); wrangler deploy --env dev`),
+		],
+	},
+	'coproc wrapper': {
+		asks: [bash('coproc NAME { wrangler deploy; }'), bash('coproc make deploy-prod')],
+		passes: [bash('coproc sleep 1')],
+	},
+	'Count flag -c': {
+		asks: [bash("fish -c 'wrangler deploy'")],
+		passes: [
+			bash('egrep -c "make deploy-prod" Makefile'),
+			bash('cut -c1-20 .github/workflows/deploy.yml'),
+			bash('git --no-pager grep -c "terraform apply"'),
+			bash('tail -c 100 terraform.log'),
 		],
 	},
 	'Runners and wrappers': {

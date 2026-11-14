@@ -22,6 +22,7 @@ const WRAPPERS = {
 	...Object.fromEntries(KEYWORDS.map((word) => [word, {}])),
 	function: { operands: 1 },
 	nohup: {},
+	coproc: { name: '{' },
 	corepack: {},
 	command: { bool: ['-p', '-v', '-V'] },
 	exec: { bool: ['-c', '-l'], value: ['-a'] },
@@ -39,7 +40,13 @@ const WRAPPERS = {
 	bun: runner({ value: ['--cwd', '-F'] }),
 };
 const PROGRAM_ALIASES = { '@shopify/cli': 'shopify' };
-const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh']);
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'eval', 'source', '.']);
+const SHELL_VALUES = ['-o', '+o', '-O', '+O', '--rcfile', '--init-file'];
+const OPENERS = ['if', 'case', 'while', 'until', 'for', 'select', '{'];
+const CLOSERS = ['fi', 'esac', 'done', '}'];
+const leads = (words) => words.every((word, i) => KEYWORDS.includes(word) || [word, words[i - 1]].includes('coproc'));
+const BRACE = /^([^\s;&|<>(){}]*?(,|\.\.)[^\s;&|<>()]*?\}|[A-Za-z_]\w*\}[<>])/;
+const COUNT_FLAGS = new Set('grep egrep fgrep rg wc head tail jq sort uniq cut ls cat diff'.split(' '));
 
 const WRANGLER_GLOBAL_VALUES = ['--env', '-e', '--config', '-c', '--cwd', '--env-file'];
 const WRANGLER_READS = [
@@ -51,18 +58,20 @@ const WRANGLER_READS = [
 ].flatMap((line) => line.split('|'));
 const WRANGLER_LOCAL_STORES = ['d1', 'kv', 'r2'];
 const HELP_FLAGS = ['--help', '-h', '--version', '-v'];
-const TERRAFORM_WRITES = new Set(['apply', 'destroy', 'import', 'taint', 'untaint', 'force-unlock']);
+const TERRAFORM_WRITES = new Set(['apply', 'destroy', 'import', 'refresh', 'test', 'taint', 'untaint', 'force-unlock']);
 const TERRAFORM_SUBCOMMAND_WRITES = {
 	state: ['rm', 'mv', 'push', 'replace-provider'],
 	workspace: ['delete', 'new', 'select'],
 };
 const SHOPIFY_DEV_THEME = ['--development', '-d', '--unpublished', '-u'];
 const SHOPIFY_LIVE_THEME = ['--publish', '--live', '-l', '--allow-live', '-a'];
+const SHOPIFY_DEV_CONFIGS = ['dev', 'shopify.app.dev.toml'];
 const SHOPIFY_READS = 'get list search find show generate validate graphql_query graphql_schema'.split(' ');
 const MAKE_VALUE_FLAGS = ['-C', '-f', '-I', '-o', '-W', '--directory', '--file'];
 const MAKE_WRITE = /deploy|apply|migrate|release/;
 const GH_VALUE_FLAGS = '-R --repo -r --ref -f -F --field --raw-field -X --method -H --header'.split(' ');
 const DEPLOY_WORKFLOW_PARTS = ['deploy', 'apply', 'prod', 'production'];
+const DEPLOY_CALL = /\/rerun|pending_deployments|(^|\/)repos\/[^/\s]+\/[^/\s]+\/dispatches\b/;
 const WORKFLOW_DISPATCH = /\/actions\/workflows\/([^/?\s]+)\/dispatches/;
 const SQL_WRITE_WORDS = 'INSERT|UPDATE|DELETE|REPLACE|UPSERT|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX';
 const SQL_WRITE = new RegExp(`\\b(${SQL_WRITE_WORDS}|BEGIN|COMMIT|ROLLBACK|SAVEPOINT)\\b`, 'i');
@@ -91,13 +100,23 @@ function parse(command) {
 		return found;
 	};
 
-	function expansion() {
+	function expansion(mark) {
 		const name = take(/^(\{[^}]*\}|[A-Za-z_]\w*|[0-9@*#?$!-])/).replace(/^\{(.*)\}$/, '$1');
+		if (!/^([A-Za-z_]\w*|[0-9@*#?$!-]?)$/.test(name)) mark('a ${…} expansion has an operator');
 		return name === '' ? '$' : name === 'HOME' ? homedir() : UNKNOWN;
 	}
 
-	function substitute(closer) {
-		if (!read(closer)) unread.push({ why: 'a command substitution is not closed', text: command });
+	function substitute(closer, node) {
+		if (!read(closer, { parent: node, sub: true })) unread.push({ why: 'a substitution is not closed', text: command });
+		return UNKNOWN;
+	}
+
+	function arithmetic(mark) {
+		mark('it runs (( )) arithmetic');
+		let open = 0;
+		do open += { '(': 1, ')': -1 }[command[pos++]] ?? 0;
+		while (open > 0 && pos < command.length);
+		if (open > 0) unread.push({ why: 'an arithmetic expression is not closed', text: command });
 		return UNKNOWN;
 	}
 
@@ -124,23 +143,31 @@ function parse(command) {
 		}
 	}
 
-	function read(closer) {
-		let segment = { words: [], heredocs: [] };
+	function read(closer, parent) {
+		let node = parent;
+		const fresh = (piped) => ({ words: [], heredocs: [], start: pos, node: piped ? { parent: node, sub: true } : node });
+		let segment = fresh(false);
 		let word = null;
 		let quote = null;
 		let depth = 0;
 		let redirect = false;
 		const pending = [];
 		const add = (part) => (word = (word ?? '') + part);
+		const mark = (why) => (segment.unread ??= why);
 		const endWord = () => {
+			const first = word !== null && !redirect && leads(segment.words);
+			if (first && word === 'coproc') segment.node = { parent: segment.node, sub: true };
+			else if (first && OPENERS.includes(word)) node = segment.node = { parent: segment.node, back: node };
+			else if (first && CLOSERS.includes(word) && node.back && !node.paren) [segment.closes, node] = [node, node.back];
 			if (word !== null && !redirect) segment.words.push(word);
 			if (word !== null) redirect = false;
 			word = null;
 		};
-		const endSegment = () => {
+		const endSegment = (piped = false) => {
 			endWord();
+			if (segment.unread) unread.push({ why: segment.unread, text: command.slice(segment.start, pos) });
 			if (segment.words.length) segments.push(segment);
-			segment = { words: [], heredocs: [] };
+			segment = fresh(piped);
 		};
 		while (pos < command.length) {
 			const c = command[pos++];
@@ -153,11 +180,15 @@ function parse(command) {
 			} else if (c === closer && quote === null && (closer === '`' || depth === 0)) {
 				endSegment();
 				return true;
-			} else if (c === '`') add(substitute('`'));
+			} else if (c === '`') add(substitute('`', node));
+			else if (c === '$' && command[pos] === '(' && command[pos + 1] === '(') add(arithmetic(mark));
 			else if (c === '$' && command[pos] === '(') {
 				pos++;
-				add(substitute(')'));
-			} else if (c === '$') add(expansion());
+				add(substitute(')', node));
+			} else if (c === '$' && quote === null && `'"`.includes(command[pos])) {
+				mark(`a word uses $${command[pos]}…${command[pos]} quoting`);
+				add(UNKNOWN);
+			} else if (c === '$') add(expansion(mark));
 			else if (quote === '"') {
 				if (c === '"') quote = null;
 				else add(c);
@@ -169,22 +200,37 @@ function parse(command) {
 				while (pos < command.length && command[pos] !== '\n') pos++;
 			} else if ('<>'.includes(c) && command[pos] === '(') {
 				pos++;
-				add(substitute(')'));
+				mark('it reads a process substitution');
+				add(substitute(')', node));
+			} else if (c === '(' && command[pos] === '(' && word === null) {
+				pos--;
+				arithmetic(mark);
 			} else if (c === '<' && command[pos] === '<' && command[pos + 1] !== '<') {
 				endWord();
 				pending.push(heredoc(segment));
 			} else if ('<>'.includes(c) || (c === '&' && command[pos] === '>')) {
 				if (/^\d+$/.test(word ?? '')) word = null;
 				endWord();
-				while ('<>&'.includes(command[pos] ?? 'x')) pos++;
+				while ('<>&|'.includes(command[pos] ?? 'x')) pos++;
 				redirect = true;
 			} else if (';&|\n()'.includes(c)) {
-				if (c === '(') depth++;
-				if (c === ')') depth = Math.max(0, depth - 1);
-				endSegment();
+				endWord();
+				const doubled = '&|'.includes(c) && command[pos] === c;
+				if (doubled || (c === '|' && command[pos] === '&')) pos++;
+				const piped = c === '|' && !doubled;
+				if (piped || (c === '&' && !doubled)) {
+					if (segment.closes) segment.closes.sub = true;
+					segment.node = { parent: segment.node, sub: true };
+				}
+				if (c === '(') [depth, node] = [depth + 1, { parent: node, back: node, sub: true, paren: true }];
+				if (c === ')') [depth, node] = [Math.max(0, depth - 1), node.paren ? node.back : node];
+				endSegment(piped);
 				if (c === '\n') readBodies(pending);
 			} else if (/\s/.test(c)) endWord();
-			else add(c);
+			else {
+				if (c === '{' && BRACE.test(command.slice(pos))) mark('it uses brace expansion or a {name} redirect');
+				add(c);
+			}
 		}
 		if (quote !== null) unread.push({ why: 'a quote is not closed', text: command });
 		endSegment();
@@ -192,7 +238,7 @@ function parse(command) {
 		return closer === null;
 	}
 
-	read(null);
+	read(null, {});
 	return { segments, unread };
 }
 
@@ -203,7 +249,7 @@ function programName(word) {
 
 const isJudgedProgram = (word) => Object.hasOwn(PROGRAM_RULES, programName(word) ?? '');
 const namedProgram = (source) =>
-	source.split(/[^\w@./\-\u0000]+/).find(isJudgedProgram) ?? /deploy\.ya?ml/.exec(source)?.[0];
+	source.split(/[^\w@./\u0000]+/).find(isJudgedProgram) ?? /deploy\.ya?ml/.exec(source)?.[0];
 
 function flagWidth(words, i, spec) {
 	const [flag, next] = [words[i], words[i + 1]];
@@ -243,7 +289,7 @@ function unwrap(words, inherited) {
 		if (!Object.hasOwn(WRAPPERS, name ?? '')) break;
 		const spec = WRAPPERS[name];
 		let flags = readFlags(words, i + 1, spec);
-		i = flags.next + (spec.operands ?? 0);
+		i = flags.next + (spec.operands ?? 0) + (spec.name && words[flags.next + 1] === spec.name ? 1 : 0);
 		while (!flags.unknown && Object.hasOwn(spec.verbs ?? {}, words[i])) {
 			flags = readFlags(words, i + 1 + spec.verbs[words[i]], spec);
 			i = flags.next;
@@ -260,7 +306,10 @@ const flagValue = (arg, next, name) =>
 const flagValues = (args, names) =>
 	args.flatMap((arg, i) => names.flatMap((name) => flagValue(arg, args[i + 1], name)));
 const flagOn = (args, name) =>
-	args.some((arg, i) => (arg === name && args[i + 1] !== 'false') || arg === `${name}=true`);
+	args.reduce((on, arg, i) => {
+		if (arg === name || arg === `${name}=true`) return arg !== name || args[i + 1] !== 'false';
+		return arg.startsWith(`${name}=`) || arg === `--no-${name.slice(2)}` ? false : on;
+	}, false);
 const positional = (args, valueFlags = []) =>
 	args.filter((arg, i) => !arg.startsWith('-') && !valueFlags.includes(args[i - 1]));
 
@@ -295,13 +344,15 @@ const PROGRAM_RULES = {
 		const oneReadSql = sql.length === 1 && flagValues(args, ['--file']).length === 0 && isReadSql(sql[0]);
 		if (command.startsWith('d1 execute') && oneReadSql) return null;
 		const envs = flagValues(args, ['--env', '-e']);
+		const attached = args.find((arg) => /^-[ec][^=]/.test(arg));
 		const prodConfig = flagValues(args, ['--config', '-c']).find(isProdName);
 		const account = env.CLOUDFLARE_ACCOUNT_ID ?? '';
 		const prodAccount = account === ACCOUNTS.prod || account.includes(UNKNOWN);
 		const devEnv = envs.length ? envs.every((name) => name === 'dev') : env.CLOUDFLARE_ENV === 'dev';
-		if (devEnv && !prodAccount && !prodConfig) return null;
+		if (devEnv && !prodAccount && !prodConfig && !attached) return null;
 		const because = [
 			[prodAccount, 'CLOUDFLARE_ACCOUNT_ID is the Catati id or unknown'],
+			[attached, `the guard does not read the attached value of ${attached}`],
 			[prodConfig, `--config ${prodConfig} is a prod config`],
 			[envs.length, `--env ${envs.join(', ')} is not dev`],
 			[true, 'no --env targets the production Worker'],
@@ -320,7 +371,7 @@ const PROGRAM_RULES = {
 	shopify(args) {
 		const has = (...words) => words.some((word) => args.includes(word));
 		const configs = flagValues(args, ['--config', '-c']);
-		const devConfig = configs.length > 0 && configs.every((config) => nameParts(config).includes('dev'));
+		const devConfig = configs.length > 0 && configs.every((config) => SHOPIFY_DEV_CONFIGS.includes(config));
 		const appWrite = has('deploy', 'release') || (has('config') && has('push'));
 		if (has('app') && appWrite && !devConfig) {
 			return 'This Shopify app command changes the live app, because a --config is missing or not dev';
@@ -349,9 +400,9 @@ const PROGRAM_RULES = {
 	},
 	curl(args) {
 		const path = args.find(
-			(arg) => /\/rerun|pending_deployments/.test(arg) || isDeployWorkflow(WORKFLOW_DISPATCH.exec(arg)?.[1]),
+			(arg) => DEPLOY_CALL.test(arg) || isDeployWorkflow(WORKFLOW_DISPATCH.exec(arg)?.[1]),
 		);
-		return path ? `This calls ${path}, which starts, reruns or approves a deploy` : null;
+		return path ? `This calls ${path}, which can start, rerun or approve a deploy` : null;
 	},
 };
 PROGRAM_RULES.tofu = PROGRAM_RULES.terraform;
@@ -373,13 +424,21 @@ function cannotRead(why, source) {
 }
 
 function judgeShell(program, args, heredocs, scope, env, command) {
-	if (program === 'eval') return judgeBash(args.join(' '), scope);
-	const child = () => ({ cwd: scope.cwd, env: { ...env } });
-	const flag = args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
-	if (flag !== -1) return judgeBash(args[flag + 1] ?? '', child());
+	const operands = args[0] === '--' ? args.slice(1) : args;
+	if (program === 'eval') return judgeBash(operands.join(' '), scope);
+	const inShell = program === 'source' || program === '.';
+	const child = () => (inShell ? scope : { cwd: scope.cwd, env: { ...env } });
+	let i = 0;
+	while (!inShell && /^[-+]/.test(args[i] ?? '') && args[i] !== '--') i += SHELL_VALUES.includes(args[i]) ? 2 : 1;
+	const [options, string] = [args.slice(0, i), args[i] === '--' ? args[i + 1] : args[i]];
+	if (options.some((option) => /^-[A-Za-z]*c/.test(option))) {
+		return string === undefined ? cannotRead('it cannot find the -c string', command) : judgeBash(string, child());
+	}
 	if (heredocs.length) return heredocs.map((body) => judgeBash(body, child())).find(Boolean) ?? null;
-	if (args.some((arg) => !arg.startsWith('-'))) return null;
-	return cannotRead(`${program} reads commands from its input`, command);
+	const stdin = inShell
+		? operands[0] === undefined || /^(\/dev\/stdin|\/dev\/fd\/0|-)$|\u0000/.test(operands[0])
+		: string === undefined || options.some((option) => /^-[A-Za-z]*s/.test(option));
+	return stdin ? cannotRead(`${program} reads commands from its input`, command) : null;
 }
 
 function judgeSegment({ words, heredocs }, scope, command) {
@@ -394,19 +453,25 @@ function judgeSegment({ words, heredocs }, scope, command) {
 	if (program === undefined) return null;
 	if (program.includes(UNKNOWN)) return cannotRead('its program word is an expansion', command);
 	if (Object.hasOwn(SCOPE_RULES, program)) SCOPE_RULES[program](args, scope);
-	if (SHELLS.has(program) || program === 'eval') return judgeShell(program, args, heredocs, scope, env, command);
+	if (SHELLS.has(program)) return judgeShell(program, args, heredocs, scope, env, command);
 	if (Object.hasOwn(PROGRAM_RULES, program)) {
 		const action = PROGRAM_RULES[program](args, { env, cwd: scope.cwd });
 		return action && `${action} (${show(words)})`;
 	}
 	const flag = args.indexOf('-c');
-	return flag === -1 ? null : cannotRead(`it does not read the -c string of ${program}`, args[flag + 1] ?? '');
+	const counts = COUNT_FLAGS.has(program) || (program === 'git' && args.slice(0, flag).includes('grep'));
+	return flag === -1 || counts ? null : cannotRead(`it does not read the -c string of ${program}`, args[flag + 1] ?? '');
 }
 
 function judgeBash(command, scope) {
 	const { segments, unread } = parse(command);
+	const stateOf = (node) => {
+		if (!node.parent) return scope;
+		const outer = stateOf(node.parent);
+		return node.sub ? (node.state ??= { cwd: outer.cwd, env: { ...outer.env } }) : outer;
+	};
 	for (const segment of segments) {
-		const action = judgeSegment(segment, scope, command);
+		const action = judgeSegment(segment, stateOf(segment.node), command);
 		if (action) return action;
 	}
 	return unread.map(({ why, text: source }) => cannotRead(why, source)).find(Boolean) ?? null;
@@ -420,9 +485,11 @@ function judgeCloudflare(input) {
 	const writes = methods.filter((method) => method !== 'GET');
 	if (writes.length === 0) return null;
 	const sqlKeys = code.match(/\bsql\b/g) ?? [];
+	const paths = [...code.matchAll(/\bpath\b(?:['"]?\s*:\s*(['"`])([^'"`]*)\1)?/g)];
+	const d1Request = paths.length === 1 && D1_QUERY_PATH.test(paths[0][2] ?? '');
 	const literal = SQL_LITERAL.exec(code)?.[1];
 	const sql = literal === undefined ? null : literal.startsWith('"') ? JSON.parse(literal) : literal.slice(1, -1);
-	const oneReadQuery = writes.length === 1 && writes[0] === 'POST' && D1_QUERY_PATH.test(code);
+	const oneReadQuery = writes.length === 1 && writes[0] === 'POST' && d1Request;
 	if (oneReadQuery && sqlKeys.length === 1 && sql !== null && isReadSql(sql)) return null;
 	const accounts = { undefined: 'names no account', [ACCOUNTS.dev]: 'writes a zone or names the Catati account' };
 	const account = accounts[input.account_id] ?? `runs on account ${input.account_id}, not catati-dev`;
@@ -442,10 +509,12 @@ const ACTIONS_METHODS = {
 const TOOL_RULES = {
 	Bash: (input, cwd) => judgeBash(text(input.command, 'Bash command'), { cwd: cwd ?? null, env: {} }),
 	mcp__cloudflare__execute: judgeCloudflare,
-	mcp__Shopify__: (input, cwd, toolName) =>
-		SHOPIFY_READS.some((prefix) => toolName.startsWith(`mcp__Shopify__${prefix}`))
-			? null
-			: `${toolName} writes to the live Shopify store`,
+	mcp__Shopify__: (input, cwd, toolName) => {
+		const mutation = toolName === 'mcp__Shopify__graphql_query' && /\bmutation\b/.test(JSON.stringify(input));
+		if (mutation) return `${toolName} runs a mutation on the live Shopify store`;
+		const read = SHOPIFY_READS.some((prefix) => toolName.startsWith(`mcp__Shopify__${prefix}`));
+		return read ? null : `${toolName} writes to the live Shopify store`;
+	},
 	mcp__github__actions_run_trigger: (input) => {
 		const method = text(input.method, 'actions_run_trigger method');
 		if (!Object.hasOwn(ACTIONS_METHODS, method)) throw new TypeError(`actions_run_trigger method ${method} is unknown`);
