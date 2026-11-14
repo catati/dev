@@ -1,14 +1,14 @@
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sessionRepos } from './session-start.mjs';
 
 export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const LOCK_ERROR = /\.lock'?: File exists|Unable to create '[^']*\.lock'|could not lock config file/;
 const LOCK_TRIES = 4;
-const REPO_LOCK_WAIT_MS = 20_000;
-const REPO_LOCK_STALE_MS = 60_000;
+const REPO_LOCK_WAIT_MS = 30_000;
+const REPO_LOCK_STALE_MS = 15_000;
 
 const branchOf = (name) => `worktree-${name}`;
 
@@ -50,14 +50,18 @@ function withRepoLock(repo, work) {
 			break;
 		} catch (error) {
 			if (error.code !== 'EEXIST') throw error;
-			let age = 0;
+			let seen;
 			try {
-				age = Date.now() - statSync(lock).mtimeMs;
+				seen = statSync(lock);
 			} catch {
 				continue;
 			}
-			if (age > REPO_LOCK_STALE_MS) {
-				rmSync(lock, { recursive: true, force: true });
+			if (Date.now() - seen.mtimeMs > REPO_LOCK_STALE_MS) {
+				const stale = `${lock}.stale-${process.pid}-${Date.now()}`;
+				try {
+					if (statSync(lock).ino === seen.ino) renameSync(lock, stale);
+				} catch {}
+				rmSync(stale, { recursive: true, force: true });
 				continue;
 			}
 			if (Date.now() - started > REPO_LOCK_WAIT_MS) throw new Error(`timed out waiting for ${lock}`);
@@ -95,8 +99,15 @@ function addWorktree(repo, path, name) {
 function addWorktreeLocked(repo, path, name) {
 	const branch = branchOf(name);
 	const base = git(['rev-parse', '--verify', 'HEAD^{commit}'], repo);
-	git(['worktree', 'add', '--quiet', '--lock', '-b', branch, path, base], repo);
+	if (tryGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], repo) !== null) throw new Error(`${repo}: branch ${branch} already exists`);
 	const made = { repo, path, branch };
+	try {
+		git(['worktree', 'add', '--quiet', '--lock', '-b', branch, path, base], repo);
+	} catch (error) {
+		dropWorktree(made);
+		tryGit(['worktree', 'prune'], repo);
+		throw error;
+	}
 	try {
 		git(['config', `branch.${branch}.catatiBase`, base], repo);
 		git(['config', `branch.${branch}.pushRemote`, 'no-push'], repo);
@@ -146,10 +157,7 @@ export function createWorktree({ cwd, name }) {
 function tryRmdir(dir) {
 	try {
 		rmdirSync(dir);
-		return true;
-	} catch {
-		return false;
-	}
+	} catch {}
 }
 
 function removeOne(path) {
@@ -157,21 +165,31 @@ function removeOne(path) {
 	const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
 	const base = branch && tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
 	if (!base) return `${path}: kept, not a catati worktree branch`;
-	if (git(['status', '--porcelain', '--untracked-files=all'], path) !== '') return `${path}: kept locked, it has uncommitted changes`;
-	const ahead = Number(git(['rev-list', '--count', `${base}..${branch}`], path));
-	withRepoLock(repo, () => {
+	return withRepoLock(repo, () => {
+		if (git(['status', '--porcelain', '--untracked-files=all'], path) !== '') return `${path}: kept locked, it has uncommitted changes`;
 		tryGit(['worktree', 'unlock', path], repo);
 		git(['worktree', 'remove', path], repo);
-		if (ahead === 0) git(['branch', '-D', branch], repo);
+		const tip = git(['rev-parse', '--verify', `refs/heads/${branch}`], repo);
+		const ahead = Number(git(['rev-list', '--count', `${base}..${tip}`], repo));
+		if (ahead === 0) {
+			git(['update-ref', '-d', `refs/heads/${branch}`, tip], repo);
+			tryGit(['config', '--remove-section', `branch.${branch}`], repo);
+			return null;
+		}
+		console.error(`catati: removed ${path}; branch ${branch} keeps ${ahead} commit(s) for the root to merge`);
+		return null;
 	});
-	if (ahead === 0) return null;
-	console.error(`catati: removed ${path}; branch ${branch} keeps ${ahead} commit(s) for the root to merge`);
-	return null;
+}
+
+function isWorktreeRoot(path) {
+	return basename(dirname(path)) === 'worktrees' && NAME.test(basename(path));
 }
 
 export function removeWorktree({ worktree_path: path }) {
 	if (typeof path !== 'string' || !existsSync(path)) return [];
-	const targets = isLinkedWorktree(path)
+	if (!isWorktreeRoot(path)) return [`${path}: kept, not a .../worktrees/<name> folder`];
+	const linked = isLinkedWorktree(path);
+	const targets = linked
 		? [path]
 		: readdirSync(path)
 				.map((entry) => join(path, entry))
@@ -186,7 +204,8 @@ export function removeWorktree({ worktree_path: path }) {
 			kept.push(`${target}: kept, ${error.message}`);
 		}
 	}
-	if (!isLinkedWorktree(path)) tryRmdir(path);
+	if (!linked) tryRmdir(path);
+	if (kept.length === 0 && existsSync(path)) kept.push(`${path}: kept, it still holds ${readdirSync(path).join(', ')}`);
 	return kept;
 }
 

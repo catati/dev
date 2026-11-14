@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -176,16 +176,88 @@ test('remove keeps a branch with commits and keeps a dirty worktree locked, and 
 	assert.match(b.worktrees(dirty), /worktree-busy\nlocked/);
 });
 
-test('remove leaves a worktree it did not make', (t) => {
+test('remove leaves a worktree it did not make, and any path that is no worktree folder', (t) => {
 	const b = box(t);
 	const repo = b.repo('repo');
-	const other = join(b.project, 'other');
+	const other = join(b.project, '.claude', 'worktrees', 'other');
 	b.git(repo, 'worktree', 'add', '-q', '-b', 'mine', other);
-	const { status, stderr } = b.remove(other);
-	assert.equal(status, 1);
-	assert.match(stderr, /not a catati worktree branch/);
+	const made = b.create('made').stdout.trim();
+	for (const [path, reason] of [
+		[other, /not a catati worktree branch/],
+		[repo, /not a \.\.\.\/worktrees\/<name> folder/],
+		[b.project, /not a \.\.\.\/worktrees\/<name> folder/],
+		[join(b.project, '.claude', 'worktrees'), /not a \.\.\.\/worktrees\/<name> folder/],
+	]) {
+		const { status, stderr } = b.remove(path);
+		assert.equal(status, 1, path);
+		assert.match(stderr, reason);
+	}
 	assert.equal(existsSync(other), true);
+	assert.equal(existsSync(made), true);
 	assert.equal(b.git(repo, 'branch', '--list', 'mine', '--format=%(refname:short)'), 'mine');
+});
+
+test('remove exits 1 when the folder-mode parent still holds a file outside the repos', (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const path = b.create('notes').stdout.trim();
+	writeFileSync(join(path, 'PLAN.md'), 'plan');
+	const { status, stderr } = b.remove(path);
+	assert.equal(status, 1);
+	assert.match(stderr, /still holds PLAN\.md/);
+	assert.equal(readFileSync(join(path, 'PLAN.md'), 'utf8'), 'plan');
+	assert.equal(b.branches(repo), '');
+});
+
+test('a commit made while remove waits for the repo lock keeps its branch', async (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const path = b.create('late').stdout.trim();
+	const lock = join(repo, '.git', 'catati-worktree.lock');
+	mkdirSync(lock);
+	const removing = b.hookAsync('WorktreeRemove', { cwd: b.project, worktree_path: path });
+	await new Promise((done) => setTimeout(done, 400));
+	writeFileSync(join(path, 'repo', 'late.txt'), 'late');
+	b.git(join(path, 'repo'), 'add', '.');
+	b.git(join(path, 'repo'), 'commit', '-q', '-m', 'late');
+	const tip = b.git(join(path, 'repo'), 'rev-parse', 'HEAD');
+	rmSync(lock, { recursive: true });
+	const { status, stderr } = await removing;
+	assert.equal(status, 0, stderr);
+	assert.match(stderr, /keeps 1 commit/);
+	assert.equal(b.git(repo, 'rev-parse', 'worktree-late'), tip);
+});
+
+test('a create whose checkout fails in one repo leaves no branch in any repo', (t) => {
+	const b = box(t);
+	const first = b.repo('a-first');
+	const second = b.repo('b-second');
+	writeFileSync(join(second, '.gitattributes'), '*.txt filter=broken\n');
+	writeFileSync(join(second, 'data.txt'), 'x');
+	b.git(second, 'add', '.');
+	b.git(second, 'commit', '-q', '-m', 'filtered');
+	b.git(second, 'config', 'filter.broken.smudge', 'false');
+	b.git(second, 'config', 'filter.broken.required', 'true');
+	const { status, stdout } = b.create('smudge');
+	assert.equal(status, 1);
+	assert.equal(stdout, '');
+	assert.equal(b.branches(first), '');
+	assert.equal(b.branches(second), '');
+	assert.doesNotMatch(b.worktrees(second), /smudge/);
+	b.git(second, 'config', '--unset', 'filter.broken.required');
+	b.git(second, 'config', 'filter.broken.smudge', 'cat');
+	assert.equal(b.create('smudge').status, 0);
+});
+
+test('a stale repo lock left by a killed hook is cleared', (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const lock = join(repo, '.git', 'catati-worktree.lock');
+	mkdirSync(lock);
+	const old = new Date(Date.now() - 60_000);
+	utimesSync(lock, old, old);
+	assert.equal(b.create('after-crash').status, 0);
+	assert.equal(existsSync(lock), false);
 });
 
 test('a bare git push from a worktree branch fails', (t) => {
