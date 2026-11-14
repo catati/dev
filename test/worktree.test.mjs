@@ -80,7 +80,7 @@ test('folder mode makes one locked worktree per child repo at HEAD and prints on
 	assert.equal(existsSync(join(path, 'notes.txt')), false);
 });
 
-test('repo mode makes <toplevel>/.claude/worktrees/<name> on worktree-<name> and keeps it out of git status', (t) => {
+test('repo mode makes <toplevel>/.claude/worktrees/<name> on worktree-<name>', (t) => {
 	const b = box(t);
 	const repo = b.repo('repo');
 	mkdirSync(join(repo, 'sub'));
@@ -89,10 +89,7 @@ test('repo mode makes <toplevel>/.claude/worktrees/<name> on worktree-<name> and
 	const path = join(repo, '.claude', 'worktrees', 'quiet-elm');
 	assert.equal(stdout, `${path}\n`);
 	assert.equal(b.git(path, 'symbolic-ref', '--short', 'HEAD'), 'worktree-quiet-elm');
-	assert.equal(b.git(repo, 'status', '--porcelain', '--untracked-files=all'), '');
-	assert.equal(readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8').match(/\/\.claude\/worktrees\//g).length, 1);
-	assert.equal(b.create('second', repo).status, 0);
-	assert.equal(readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8').match(/\/\.claude\/worktrees\//g).length, 1);
+	assert.equal(existsSync(join(repo, '.git', 'info', 'exclude')) && /worktrees/.test(readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8')), false);
 });
 
 test('a bad name exits 1 and creates nothing', (t) => {
@@ -183,7 +180,7 @@ test('remove leaves a worktree it did not make, and any path that is no worktree
 	b.git(repo, 'worktree', 'add', '-q', '-b', 'mine', other);
 	const made = b.create('made').stdout.trim();
 	for (const [path, reason] of [
-		[other, /not a catati worktree branch/],
+		[other, /it is on mine, not worktree-other/],
 		[repo, /not a \.\.\.\/worktrees\/<name> folder/],
 		[b.project, /not a \.\.\.\/worktrees\/<name> folder/],
 		[join(b.project, '.claude', 'worktrees'), /not a \.\.\.\/worktrees\/<name> folder/],
@@ -274,6 +271,34 @@ test('remove keeps a worktree that holds another worktree, so the nested one kee
 	assert.match(stderr, /kept locked, it holds worktree .*inner/);
 	assert.equal(readFileSync(join(innerPath, 'draft.txt'), 'utf8'), 'wip');
 	assert.match(b.worktrees(repo), /worktree-outer\nlocked/);
+});
+
+test('remove keeps a worktree that holds a worktree or clone of another repo with uncommitted work', (t) => {
+	const b = box(t);
+	const dev = b.repo('dev');
+	const catHotel = b.repo('cat-hotel');
+	const outer = b.create('outer', dev).stdout.trim();
+	const foreign = join(outer, '.claude', 'worktrees', 'foreign');
+	b.git(catHotel, 'worktree', 'add', '-q', '-b', 'manual', foreign);
+	writeFileSync(join(foreign, 'draft.txt'), 'wip');
+	const { status, stderr } = b.remove(outer);
+	assert.equal(status, 1);
+	assert.match(stderr, /kept locked, it has uncommitted changes/);
+	assert.equal(readFileSync(join(foreign, 'draft.txt'), 'utf8'), 'wip');
+});
+
+test('remove keeps a worktree that has switched to another branch, and both branches', (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const keep = b.create('keepme', repo).stdout.trim();
+	b.git(keep, 'checkout', '-q', '--detach');
+	const switcher = b.create('switcher', repo).stdout.trim();
+	b.git(switcher, 'checkout', '-q', 'worktree-keepme');
+	const { status, stderr } = b.remove(switcher);
+	assert.equal(status, 1);
+	assert.match(stderr, /it is on worktree-keepme, not worktree-switcher/);
+	assert.deepEqual(b.branches(repo).split('\n').sort(), ['worktree-keepme', 'worktree-switcher']);
+	assert.equal(existsSync(switcher), true);
 });
 
 test('a second remove of a path already removed exits 0', (t) => {

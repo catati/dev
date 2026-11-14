@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sessionRepos } from './session-start.mjs';
@@ -91,15 +91,6 @@ function isLinkedWorktree(dir) {
 	}
 }
 
-function excludeWorktrees(root) {
-	if (tryGit(['check-ignore', '-q', '.claude/worktrees/x'], root) !== null) return;
-	const info = join(commonDir(root), 'info');
-	mkdirSync(info, { recursive: true });
-	const exclude = join(info, 'exclude');
-	const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-	appendFileSync(exclude, `${current === '' || current.endsWith('\n') ? '' : '\n'}/.claude/worktrees/\n`);
-}
-
 function addWorktree(repo, path, name) {
 	return withRepoLock(repo, () => addWorktreeLocked(repo, path, name));
 }
@@ -142,7 +133,6 @@ export function createWorktree({ cwd, name }) {
 	if (toplevel !== null) {
 		const path = join(toplevel, '.claude', 'worktrees', name);
 		if (existsSync(path)) throw new Error(`${path} already exists`);
-		excludeWorktrees(toplevel);
 		addWorktree(toplevel, path, name);
 		return realpathSync(path);
 	}
@@ -177,11 +167,12 @@ function nestedWorktrees(repo, path) {
 		.filter((other) => prefixes.some((prefix) => other.startsWith(prefix)));
 }
 
-function removeOne(path) {
+function removeOne(path, branch) {
 	if (!existsSync(path)) return null;
 	const repo = commonDir(path);
-	const branch = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
-	const base = branch && tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
+	const current = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
+	if (current !== branch) return `${path}: kept, it is on ${current ?? 'a detached HEAD'}, not ${branch}`;
+	const base = tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
 	if (!base) return `${path}: kept, not a catati worktree branch`;
 	return withRepoLock(repo, () => {
 		const nested = nestedWorktrees(repo, path);
@@ -223,7 +214,7 @@ export function removeWorktree({ worktree_path: path }) {
 	const kept = [];
 	for (const target of targets) {
 		try {
-			const reason = removeOne(target);
+			const reason = removeOne(target, branchOf(basename(path)));
 			if (reason) kept.push(reason);
 		} catch (error) {
 			kept.push(`${target}: kept, ${error.message}`);
