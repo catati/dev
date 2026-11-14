@@ -7,11 +7,10 @@ const ACCOUNTS = {
   dev: '028a7270e2ad8a208cd6b01800f363f3',
   prod: '69f8dc2296dd15d29e03693d6492f163',
 }
-const PROD_WORKER_OR_DATABASE =
-  /(?<![\w-])(catati-)?cat-hotel(-(admin|app|landing|api))?(?![\w-])|catati-brand-guide/
-const DEV_NAME = /-dev\b|\bdev-|\bdev\./
 const LITERAL_METHOD =
   /^(?:^|[^\w$])(['"]?)method\1\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE)\2(?=\s*[,}])/
+const LITERAL_PATH =
+  /^(?:^|[^\w$])(['"]?)path\1\s*:\s*(?:'([^'\\\n]*)'|"([^"\\\n]*)"|`([^`\\]*)`)(?=\s*[,}])/
 const OPAQUE_CODE = [
   /[^\x09\x0a\x0d\x20-\x7e]/,
   /\\[ux0-7]/,
@@ -117,14 +116,16 @@ const API_ROUTINE_PULL_WRITES = [
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/comments\/\d+\/replies$/,
   /^repos\/[^/]+\/[^/]+\/pulls\/\d+\/ccr\/(ready_for_review|convert_to_draft|comments\/\d+\/(un)?resolve)$/,
 ]
-const ACTIONS_RUN_ROUTE =
-  /^repos\/[^/]+\/[^/]+\/(dispatches|actions\/workflows\/[^/]+\/dispatches|actions\/runs\/\d+\/(rerun|rerun-failed-jobs)|actions\/jobs\/\d+\/rerun)$/
-const GH_STARTS_RUN = [
+const ACTIONS_WRITE_ROUTE = /^repos\/[^/]+\/[^/]+\/(dispatches$|actions(\/|$))/
+const ACTIONS_URL = /\/repos\/[^/\s]+\/[^/\s]+\/(dispatches|actions\/)/i
+const GH_CHANGES_RUN = [
   ['workflow', 'run'],
   ['run', 'rerun'],
+  ['run', 'cancel'],
+  ['run', 'delete'],
 ]
 const WORKFLOW_RUN = ask(
-  'This starts or reruns a GitHub Actions workflow, and a workflow such as cat-hotel deploy-prod or terraform apply-prod changes production. Approve only if Shien asked for this specific run.'
+  'This starts, reruns, approves, cancels or deletes a GitHub Actions run, or changes another Actions resource, and a workflow such as cat-hotel deploy-prod or terraform apply-prod changes production. Approve only if Shien asked for this specific run.'
 )
 const HIDDEN_MERGE = /\bgh\b[\s\S]*(\bmerge\b|auto_merge)/
 const PULLS_PATH = /\bpulls\//i
@@ -461,7 +462,7 @@ function ghApiDecision(args, context) {
       `This gh api write names an endpoint the shell fills in later (${endpoints.join(' ')}), so the guard cannot tell whether it merges. Write the path out, or ${RUN_GH_DIRECTLY}`
     )
   const routes = endpoints.map(apiRoute)
-  if (routes.some((route) => route !== null && ACTIONS_RUN_ROUTE.test(route)))
+  if (routes.some((route) => route !== null && ACTIONS_WRITE_ROUTE.test(route)))
     return WORKFLOW_RUN
   const target = routes
     .map((route) => route !== null && API_MERGE_ROUTE.exec(route))
@@ -521,10 +522,10 @@ function ghDecision(rawArgs, context) {
   if (!['pr', 'workflow', 'run'].includes(args[first])) return allow
   const second = ghCommandWord(args, first + 1)
   if (UNKNOWN_WORD.test(args[second] ?? '')) return UNKNOWN_SUBCOMMAND
-  const startsRun = GH_STARTS_RUN.some(
+  const changesRun = GH_CHANGES_RUN.some(
     ([group, verb]) => args[first] === group && args[second] === verb
   )
-  if (startsRun) return WORKFLOW_RUN
+  if (changesRun) return WORKFLOW_RUN
   if (args[first] !== 'pr' || args[second] !== 'merge') return allow
   return ghPrMergeDecision(without(args, first, second), context)
 }
@@ -564,6 +565,17 @@ function curlMethods(args) {
       methods.push(cluster[1] || (args[i + 1] ?? ''))
   })
   return methods
+}
+
+function curlWrites(args) {
+  return (
+    curlMethods(args).some(
+      (method) => !READ_METHODS.has(method.toUpperCase())
+    ) ||
+    args.some((arg) =>
+      /^(-[dFT]|--data|--json|--form|--upload-file)/.test(arg)
+    )
+  )
 }
 
 function curlPut(args) {
@@ -615,57 +627,95 @@ function wrappedMerge(words, name) {
     : allow
 }
 
+function readsStdin(item) {
+  if (item.kind !== 'segment') return false
+  const { name, args } = program(tokens(item.text))
+  if (STDIN_RUNNERS.has(name)) return nestedCommands(name, args) === null
+  return (
+    SHELLS.has(name) &&
+    nestedCommands(name, args) === null &&
+    args.every((arg) => arg.startsWith('-') || arg === '<')
+  )
+}
+
 function stdinShell(items, command) {
-  const piped = items.some((item) => {
-    if (item.kind !== 'segment') return false
-    const { name, args } = program(tokens(item.text))
-    return (
-      SHELLS.has(name) &&
-      nestedCommands(name, args) === null &&
-      args.every((arg) => arg.startsWith('-'))
-    )
-  })
-  return piped && /merge|pulls/i.test(command)
+  return items.some(readsStdin) && /merge|pulls/i.test(command)
     ? ask(
         `This command feeds text that mentions a gh merge into a shell, so the guard cannot read which pull request it merges. ${RUN_GH_DIRECTLY}`
       )
     : allow
 }
 
-function literalMethods(code) {
-  if (typeof code !== 'string') return null
-  if (OPAQUE_CODE.some((pattern) => pattern.test(code))) return null
-  const methods = []
-  for (const at of code.matchAll(/method/gi)) {
-    const literal = LITERAL_METHOD.exec(code.slice(Math.max(0, at.index - 1)))
-    if (!literal) return null
-    methods.push(literal[3])
-  }
-  const requests = code.match(/\bcloudflare\b/g)?.length ?? 0
-  const plainRequests = code.match(/\bcloudflare\.request\(/g)?.length ?? 0
-  if (requests !== plainRequests || methods.length < requests) return null
-  return methods
+function shellFedText(items) {
+  if (!items.some(readsStdin)) return []
+  return items.flatMap((item) => {
+    if (item.kind === 'data') return [item.text]
+    if (item.kind !== 'segment' || readsStdin(item)) return []
+    return wordSuffixes(tokens(item.text))
+  })
 }
 
-function decideCloudflareWrite(accountId, code, readable) {
+function literalValues(code, word, [pattern, first], requests) {
+  const values = []
+  for (const at of code.matchAll(new RegExp(word, 'gi'))) {
+    const literal = pattern.exec(code.slice(Math.max(0, at.index - 1)))
+    if (!literal) return null
+    values.push(literal.slice(first).find((value) => value !== undefined))
+  }
+  return values.length < requests ? null : values
+}
+
+function requestShape(code) {
+  if (typeof code !== 'string') return null
+  if (OPAQUE_CODE.some((pattern) => pattern.test(code))) return null
+  const requests = code.match(/\bcloudflare\b/g)?.length ?? 0
+  const plainRequests = code.match(/\bcloudflare\.request\(/g)?.length ?? 0
+  if (requests !== plainRequests) return null
+  return {
+    methods: literalValues(code, 'method', [LITERAL_METHOD, 3], requests),
+    paths: literalValues(code, 'path', [LITERAL_PATH, 2], requests),
+    accountOnlyInPaths: ['accountId', 'account_id'].every(
+      (name) =>
+        code.split(name).length === code.split(`\${${name}}`).length
+    ),
+  }
+}
+
+const DEV_ACCOUNT_SEGMENTS = new Set([
+  '${accountId}',
+  '${account_id}',
+  ACCOUNTS.dev,
+])
+
+function devPath(path) {
+  if (!path.startsWith('/') || /\.\.|%|\\|\/\/|\s/.test(path)) return false
+  const interpolations = path.match(/\$\{[^}]*\}?/g) ?? []
+  if (interpolations.some((part) => !DEV_ACCOUNT_SEGMENTS.has(part)))
+    return false
+  const [, root, account] = path.split('/')
+  return (
+    root.toLowerCase() !== 'accounts' ||
+    account === undefined ||
+    DEV_ACCOUNT_SEGMENTS.has(account)
+  )
+}
+
+function decideCloudflareWrite(accountId, code, shape) {
   if (ZONE_PATH.test(code))
     return prodWrite(
       'This Cloudflare write changes a zone, and zones serve production traffic. For a route change, edit the Worker wrangler.jsonc and ship it through main.'
     )
-  const inProd = accountId === ACCOUNTS.prod
-  const legacyDevWrite =
-    readable &&
-    inProd &&
-    DEV_NAME.test(code) &&
-    !PROD_WORKER_OR_DATABASE.test(code)
-  if (legacyDevWrite) return allow
-  if (inProd || code.includes(ACCOUNTS.prod))
+  if (accountId === ACCOUNTS.prod || String(code).includes(ACCOUNTS.prod))
     return prodWrite(
-      `This Cloudflare write changes the production account Catati (${ACCOUNTS.prod}). For dev, use account_id ${ACCOUNTS.dev} (catati-dev) and dev resource ids.`
+      `This Cloudflare write changes the production account Catati (${ACCOUNTS.prod}). Only a call whose every method is a literal 'GET' passes there. For dev, use account_id ${ACCOUNTS.dev} (catati-dev) and dev resource ids.`
     )
-  if (accountId === ACCOUNTS.dev) return allow
+  if (accountId !== ACCOUNTS.dev)
+    return ask(
+      `This Cloudflare write names no known account. Pass account_id ${ACCOUNTS.dev} (catati-dev) so the guard can confirm it targets dev.`
+    )
+  if (shape?.accountOnlyInPaths && shape.paths?.every(devPath)) return allow
   return ask(
-    `This Cloudflare write names no known account. Pass account_id ${ACCOUNTS.dev} (catati-dev) so the guard can confirm it targets dev.`
+    `This catati-dev call writes through a path the guard cannot read, or one that names another account. Write each path as a literal or a template whose only part filled in is \${accountId}, under /accounts/\${accountId}/ or /accounts/${ACCOUNTS.dev}/.`
   )
 }
 
@@ -720,7 +770,9 @@ const PREFIX_VALUE_FLAGS = new Map([
 ])
 const ENV_SPLIT_STRING = /^(?:-S|--split-string)=?(.*)$/
 const WATCH_VALUE_FLAGS = new Set(['-n', '--interval', '-q', '--equexit'])
-const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh'])
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'fish', 'csh', 'tcsh'])
+const INTERPRETER = /^(python[\d.]*|node|nodejs|deno|perl|ruby|php)$/
+const STRING_LITERAL = /'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)"|`((?:\\.|[^`\\])*)`/g
 const STRING_CONSUMERS = new Set([...SHELLS, 'eval', 'source', '.', 'xargs'])
 const SHELL_LONG_VALUE_FLAGS = new Set(['--rcfile', '--init-file'])
 const OPAQUE_WRAPPERS = new Set([
@@ -731,7 +783,29 @@ const OPAQUE_WRAPPERS = new Set([
   'ssh',
   'docker',
   'podman',
+  'su',
+  'runuser',
+  'sg',
+  'busybox',
+  'setsid',
+  'ionice',
+  'chrt',
+  'taskset',
+  'flock',
+  'find',
+  'tmux',
+  'screen',
+  'strace',
+  'ltrace',
+  'chroot',
+  'unshare',
+  'nsenter',
+  'parallel',
+  'unbuffer',
+  'gtimeout',
+  'kubectl',
 ])
+const STDIN_RUNNERS = new Set(['at', 'batch'])
 const WRANGLER_READS = [
   'dev',
   'types',
@@ -814,6 +888,9 @@ function bodySubstitutions(body) {
 
 function heredocItems({ reader, quoted }, body) {
   if (HEREDOC_READERS.has(reader)) return [{ kind: 'substitution', text: body }]
+  const interpreted = INTERPRETER.test(reader ?? '')
+    ? stringLiterals(body).map((text) => ({ kind: 'substitution', text }))
+    : []
   const data = { kind: 'data', text: body }
   const substitutions = quoted ? [] : bodySubstitutions(body)
   if (!INERT_PROGRAMS.has(reader))
@@ -821,6 +898,7 @@ function heredocItems({ reader, quoted }, body) {
       data,
       { kind: 'verdict', result: wrappedMerge(body, reader) },
       ...substitutions,
+      ...interpreted,
     ]
   return [data, ...substitutions]
 }
@@ -960,6 +1038,63 @@ export function split(command) {
   return scan(command.replace(/\\\r?\n/g, ''), 0, false).items
 }
 
+export class UnreadableWord extends Error {}
+
+const ANSI_SIMPLE = {
+  a: '\x07',
+  b: '\b',
+  e: '\x1b',
+  E: '\x1b',
+  f: '\f',
+  n: '\n',
+  r: '\r',
+  t: '\t',
+  v: '\v',
+  '\\': '\\',
+  "'": "'",
+  '"': '"',
+  '?': '?',
+}
+const ANSI_NUMERIC = [
+  { lead: /^[0-7]{1,3}/, base: 8, max: 0x7f, skip: 0 },
+  { lead: /^x[0-9a-fA-F]{1,2}/, base: 16, max: 0x7f, skip: 1 },
+  { lead: /^u[0-9a-fA-F]{1,4}/, base: 16, max: 0x10ffff, skip: 1 },
+  { lead: /^U[0-9a-fA-F]{1,8}/, base: 16, max: 0x10ffff, skip: 1 },
+]
+
+function ansiCharacter(code, escape) {
+  const surrogate = code >= 0xd800 && code <= 0xdfff
+  if (code === 0 || surrogate)
+    throw new UnreadableWord(`$'…' escape ${escape} does not decode to text`)
+  return String.fromCodePoint(code)
+}
+
+function ansiEscape(text, at) {
+  const rest = text.slice(at + 1)
+  const letter = rest[0] ?? ''
+  if (Object.hasOwn(ANSI_SIMPLE, letter))
+    return { text: ANSI_SIMPLE[letter], next: at + 2 }
+  for (const { lead, base, max, skip } of ANSI_NUMERIC) {
+    const digits = lead.exec(rest)?.[0]
+    if (!digits) continue
+    const code = parseInt(digits.slice(skip), base)
+    if (code > max)
+      throw new UnreadableWord(`$'…' escape \\${digits} is not ASCII text`)
+    return {
+      text: ansiCharacter(code, `\\${digits}`),
+      next: at + 1 + digits.length,
+    }
+  }
+  if (letter === 'c') {
+    const control = rest[1] ?? ''
+    if (!/^[\x20-\x7e]$/.test(control) || control === '\\')
+      throw new UnreadableWord(`$'…' escape \\c${control} has no fixed value`)
+    const code = control === '?' ? 0x7f : control.toUpperCase().charCodeAt(0) & 0x1f
+    return { text: ansiCharacter(code, `\\c${control}`), next: at + 3 }
+  }
+  return { text: `\\${letter}`, next: at + 1 + letter.length }
+}
+
 function tokens(segment) {
   const words = []
   let word = null
@@ -978,9 +1113,9 @@ function tokens(segment) {
     } else if (quote === '$') {
       if (ch === "'") quote = null
       else if (ch === '\\') {
-        const next = segment[i + 1] ?? ''
-        word += { n: '\n', t: '\t' }[next] ?? next
-        i += 1
+        const escape = ansiEscape(segment, i)
+        word += escape.text
+        i = escape.next - 1
       } else word += ch
     } else if (/\s/.test(ch)) {
       if (word !== null) words.push(word)
@@ -1112,7 +1247,7 @@ const SQL_WRITE_WORD =
 function isPlainSqlRead(sql) {
   return (
     /^[\x20-\x7e]*$/.test(sql) &&
-    !/;|--|\/\*/.test(sql) &&
+    !/;|--|\/\*|\\/.test(sql) &&
     SQL_READ_START.test(sql) &&
     !SQL_WRITE_WORD.test(sql)
   )
@@ -1176,9 +1311,26 @@ function nestedCommands(name, args) {
     return [args.slice(i).join(' ')]
   }
   if (OPAQUE_WRAPPERS.has(name)) return wordSuffixes(args)
+  if (STDIN_RUNNERS.has(name)) {
+    const here = hereString(args)
+    return here === null ? null : [here]
+  }
   if (!SHELLS.has(name)) return null
-  const command = shellCommandString(args)
+  const command = shellCommandString(args) ?? hereString(args)
   return command === null ? null : [command]
+}
+
+function hereString(args) {
+  const at = args.findIndex((arg) => arg.startsWith('<<<'))
+  if (at === -1) return null
+  return args[at] === '<<<' ? (args[at + 1] ?? '') : args[at].slice(3)
+}
+
+function stringLiterals(code) {
+  const strings = [...code.matchAll(STRING_LITERAL)].map((match) =>
+    match.slice(1).find((value) => value !== undefined)
+  )
+  return strings.length ? [...strings, strings.join(' ')] : []
 }
 
 function programDecision(words, { env, name, args }, context) {
@@ -1186,6 +1338,8 @@ function programDecision(words, { env, name, args }, context) {
   if (name === 'git') return gitRunsString(args, words)
   if (name === 'curl' && PULLS_PATH.test(words) && curlPut(args))
     return wrappedMerge('gh merge', name)
+  if (name === 'curl' && ACTIONS_URL.test(words) && curlWrites(args))
+    return WORKFLOW_RUN
   if (name === 'wrangler') return wranglerDecision(args, env)
   if (name === 'shopify') return shopifyDecision(args)
   if (name === 'make' && MAKE_PROD.test(args.join(' ')))
@@ -1199,12 +1353,16 @@ function decideSegment(segment, context) {
   const words = tokens(segment)
   const parsed = program(words)
   const nested = nestedCommands(parsed.name, parsed.args)
+  const interpreted = INTERPRETER.test(parsed.name)
+    ? parsed.args.flatMap(stringLiterals)
+    : []
   return combine([
     substitutedMerge(segment),
     assignedMerge(parsed.env),
     ...(nested === null
       ? [programDecision(words.join(' '), parsed, context)]
       : nested.map((command) => decideCommand(command, context))),
+    ...interpreted.map((command) => decideCommand(command, context)),
   ])
 }
 
@@ -1240,6 +1398,8 @@ function decideCommand(command, context) {
   const outer = []
   let current = context
   const results = [stdinShell(items, command)]
+  for (const text of shellFedText(items))
+    results.push(decideCommand(text, context))
   for (const item of items) {
     if (item.kind === '(') outer.push(current)
     else if (item.kind === ')') current = outer.pop() ?? current
@@ -1252,6 +1412,21 @@ function decideCommand(command, context) {
     }
   }
   return combine(results)
+}
+
+function decideBash(command, context) {
+  const cloudCli =
+    CLI.test(command) &&
+    PROD_TARGET.test(command) &&
+    !(READ_VERB.test(command) && !WRITE_VERB.test(command))
+  return combine([
+    decideCommand(command, context),
+    shellFedMerge(command, context.seen),
+    cloudCli &&
+      prodWrite(
+        'This command can change the production Firebase or Google Cloud project. For dev, use --project dev. Read-only production commands pass.'
+      ),
+  ])
 }
 
 export function decide(
@@ -1285,28 +1460,23 @@ export function decide(
     )
 
   if (toolName === 'Bash') {
-    const command = toolInput?.command ?? ''
-    const cloudCli =
-      CLI.test(command) &&
-      PROD_TARGET.test(command) &&
-      !(READ_VERB.test(command) && !WRITE_VERB.test(command))
-    return combine([
-      decideCommand(command, context),
-      shellFedMerge(command, context.seen),
-      cloudCli &&
-        prodWrite(
-          'This command can change the production Firebase or Google Cloud project. For dev, use --project dev. Read-only production commands pass.'
-        ),
-    ])
+    try {
+      return decideBash(toolInput?.command ?? '', context)
+    } catch (error) {
+      if (!(error instanceof UnreadableWord)) throw error
+      return ask(
+        `The guard cannot read a word of this command as bash does (${error.message}), so it cannot tell whether it changes production. Write the word out plainly.`
+      )
+    }
   }
 
   if (toolName === 'mcp__cloudflare__execute') {
     const code = toolInput?.code ?? ''
     if (isOverbookedNightsProdRead(toolInput?.account_id, code, reportSqlSha256))
       return allow
-    const methods = literalMethods(code)
-    if (methods?.every((method) => method === 'GET')) return allow
-    return decideCloudflareWrite(toolInput?.account_id, code, methods !== null)
+    const shape = requestShape(code)
+    if (shape?.methods?.every((method) => method === 'GET')) return allow
+    return decideCloudflareWrite(toolInput?.account_id, code, shape)
   }
 
   if (toolName === 'mcp__github__actions_run_trigger')

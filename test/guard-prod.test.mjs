@@ -297,24 +297,23 @@ test('Cloudflare: zone writes ask for approval in either account', () => {
   assert.equal(cf(PROD, call('PATCH', '/zones/abc/settings')), 'ask')
 })
 
-test('Cloudflare: legacy -dev resources in Catati pass unless a production resource is named', () => {
+test('Cloudflare: a write on Catati asks even when it names only a -dev resource', () => {
   assert.equal(
     cf(PROD, call('POST', '/d1/database/catati-cat-hotel-dev/query')),
-    null
+    'ask'
   )
   assert.equal(
     cf(PROD, call('PUT', '/workers/scripts/catati-cat-hotel-api-dev')),
-    null
+    'ask'
   )
-  const legacyThen = (path) =>
-    `${call('PUT', '/workers/scripts/catati-cat-hotel-api-dev')}; ${call('DELETE', path)}`
-  assert.equal(cf(PROD, legacyThen('/d1/database/catati-cat-hotel')), 'ask')
-  assert.equal(cf(PROD, legacyThen('/workers/scripts/cat-hotel-admin')), 'ask')
+  assert.equal(
+    cf(
+      PROD,
+      "async () => { const tag = 'notes-dev'; return cloudflare.request({ method: 'POST', path: `/accounts/${accountId}/d1/database/542f100a-e7ed-46d3-9eb4-9aaa9b7606a7/query`, body: { sql: 'DELETE FROM bookings' } }) }"
+    ),
+    'ask'
+  )
 })
-
-test.todo(
-  'shortcut: legacy -dev resources in Catati pass by name; remove when #245 deletes them'
-)
 
 test('Cloudflare: reads pass in any account', () => {
   assert.equal(cf(PROD, call('GET', '/workers/scripts/cat-hotel-admin')), null)
@@ -796,7 +795,7 @@ test('merge: gh behind a wrapper is judged when the guard can unwrap it, and ask
     [`bash -o pipefail -c 'gh pr merge 8 ${PIN}'`]: null,
     [`bash -euo pipefail -c 'gh pr merge 7 ${PIN}'`]: 'deny',
     [`echo 'gh pr merge 8 ${PIN}' | sh`]: 'ask',
-    'python3 -c "import os; os.system(\'gh pr merge 8\')"': 'ask',
+    'python3 -c "import os; os.system(\'gh pr merge 8\')"': 'deny',
     'curl -X PUT https://api.github.com/repos/catati/cat-hotel/pulls/8/merge':
       'ask',
     'git merge origin/main && git log --grep merge': null,
@@ -883,7 +882,7 @@ test('merge: a heredoc is judged as commands only when a shell reads it', () => 
     [`bash <<'SH'\ngh pr merge 7 ${PIN}\nSH`]: 'deny',
     [`sh <<-SH\n\tgh pr merge 8 ${PIN}\n\tSH`]: null,
     'cat <<MD\n$(gh pr merge 7)\nMD': 'deny',
-    [`cat <<'MD' | sh\ngh pr merge 7 ${PIN}\nMD`]: 'ask',
+    [`cat <<'MD' | sh\ngh pr merge 7 ${PIN}\nMD`]: 'deny',
     [`cat <<'MD'\nnotes\nMD\ngh pr merge 7 ${PIN}`]: 'deny',
   })
 })
@@ -954,10 +953,10 @@ test('merge: a gh merge handed to a shell, eval or xargs as text asks', () => {
   expectAll(roundTwo(), {
     "<<'EOF' bash\ngh pr merge 7 --squash\nEOF": 'deny',
     "python3 - <<'PY'\nimport subprocess\nsubprocess.run(['gh', 'pr', 'merge', '7'])\nPY":
-      'ask',
+      'deny',
     "node <<'JS'\nrequire('child_process').execSync('gh pr merge 7')\nJS":
-      'ask',
-    "bash <(echo 'gh pr merge 7 --squash')": 'ask',
+      'deny',
+    "bash <(echo 'gh pr merge 7 --squash')": 'deny',
     'source <(echo gh pr merge 7 --squash)': 'ask',
     'eval "$(echo gh pr merge 7 --squash)"': 'ask',
     'bash -c "$(echo gh pr merge 7 --squash)"': 'ask',
@@ -1010,13 +1009,13 @@ test('merge: routine pull request REST writes that cannot merge pass', () => {
 test('merge: a heredoc to a program that can run it is read raw, comments and shebangs included', () => {
   expectAll(roundTwo(), {
     "python3 - <<'PY'\nimport subprocess\n# merge each verified PR\nsubprocess.run(['gh', 'pr', 'merge', '7'])\nPY":
-      'ask',
+      'deny',
     "python3 - <<'PY'\nimport subprocess  # stdlib\nsubprocess.run(['gh', 'pr', 'merge', '7'])\nPY":
-      'ask',
+      'deny',
     "python3 <<'PY'\n#!/usr/bin/env python3\nimport os\nos.system('gh pr merge 7')\nPY":
-      'ask',
-    "ruby <<'RB'\n# go\nsystem('gh pr merge 7')\nRB": 'ask',
-    "perl <<'PL'\n# go\nsystem('gh pr merge 7');\nPL": 'ask',
+      'deny',
+    "ruby <<'RB'\n# go\nsystem('gh pr merge 7')\nRB": 'deny',
+    "perl <<'PL'\n# go\nsystem('gh pr merge 7');\nPL": 'deny',
     "python3 - <<'PY'\n# a comment\nprint('done')\nPY": null,
   })
 })
@@ -1149,6 +1148,7 @@ test('Bash: a prod d1 --command passes only as one plain ASCII read', () => {
     "'ATTACH DATABASE x AS y'",
     "'VACUUM'",
     "'SELECT 1' --command 'DELETE FROM rooms'",
+    '"SELECT 1\\nDELETE FROM rooms"',
   ])
     assert.equal(d1(sql), 'ask', sql)
   assert.equal(
@@ -1276,6 +1276,157 @@ test('GitHub Actions: starting, rerunning or cancelling a run asks, reads pass',
     'gh workflow list',
     'gh workflow view deploy-prod.yml',
     'gh api repos/catati/cat-hotel/actions/runs',
+  ])
+    assert.equal(sh(command), null, command)
+})
+
+test('Bash: $-quoted words decode every ANSI-C escape the way bash does', () => {
+  for (const sql of [
+    "$'SELECT 1\\x3b\\x44ELETE FROM rooms'",
+    "$'SELECT 1\\x0aDELETE FROM rooms'",
+    "$'SELECT 1\\012DELETE FROM rooms'",
+    "$'SELECT 1\\rDELETE FROM rooms'",
+    "$'SELECT 1\\u000aDELETE FROM rooms'",
+    "$'SELECT 1\\U0000000aDELETE FROM rooms'",
+    "$'SELECT 1\\cJDELETE FROM rooms'",
+    "$'SELECT 1\\vDELETE FROM rooms'",
+    "\"SELECT 1\"$'\\x0a'\"DELETE FROM rooms\"",
+  ])
+    assert.equal(d1(sql), 'ask', sql)
+  for (const command of [
+    "make $'deploy\\x2dprod'",
+    "bash -c $'make deploy\\x2dprod'",
+    "bash -c $'npx wrangler deploy --env\\x20prod'",
+    "npx wrangler deploy --env $'\\x70rod'",
+    "npx wrangler deploy --env $'\\160rod'",
+    "npx wrangler deploy --env $'\\u0070rod'",
+    "npx wrangler deploy --env $'dev\\x00'",
+    "npx wrangler deploy --env $'dev\\c@'",
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    "npx wrangler deploy --env $'d\\x65v'",
+    "npx wrangler deploy --env $'\\144ev'",
+    "npx wrangler d1 execute DB --env prod --remote --command $'SELECT\\x20count(*) FROM rooms'",
+    "npx wrangler d1 execute DB --env prod --remote --command $'SELECT \\'a\\' FROM rooms'",
+  ])
+    assert.equal(sh(command), null, command)
+})
+
+const devWrite = (path) =>
+  cf(DEV, `async () => cloudflare.request({ method: 'POST', path: ${path} })`)
+
+test('Cloudflare: a catati-dev write passes only when each path names the dev account', () => {
+  for (const path of [
+    "'/accounts/' + '69f8dc2296dd15d29e03693d6492f163'.slice(0) + '/workers/scripts/cat-hotel-api'",
+    "`/accounts/${'69f8dc22' + '96dd15d29e03693d6492f163'}/workers/scripts/cat-hotel-api`",
+    '`/accounts/${other}/workers/scripts/cat-hotel-api`',
+    "'/accounts/someone-else/workers/scripts/cat-hotel-api'",
+    '`/accounts/${accountId}/workers/scripts/${name}`',
+    "'/accounts/028a7270e2ad8a208cd6b01800f363f3/../69f8dc2296dd15d29e03693d6492f163/workers/scripts/x'",
+    "'/accounts/028a7270e2ad8a208cd6b01800f363f3%2f..%2fx'",
+    'p',
+  ])
+    assert.equal(devWrite(path), 'ask', path)
+  assert.equal(
+    cf(
+      DEV,
+      "async () => { const id = (await cloudflare.request({ method: 'GET', path: '/accounts' })).result.find((a) => a.name === 'Catati').id; return cloudflare.request({ method: 'DELETE', path: `/accounts/${id}/workers/scripts/cat-hotel-api` }) }"
+    ),
+    'ask'
+  )
+  assert.equal(
+    cf(
+      DEV,
+      "async () => { const accountId = 'x'; return cloudflare.request({ method: 'DELETE', path: `/accounts/${accountId}/workers/scripts/cat-hotel-api` }) }"
+    ),
+    'ask'
+  )
+  assert.equal(
+    cf(DEV, "async () => cloudflare.request({ method: 'POST' })"),
+    'ask'
+  )
+  for (const path of [
+    '`/accounts/${accountId}/workers/scripts/cat-hotel-api`',
+    "'/accounts/028a7270e2ad8a208cd6b01800f363f3/d1/database/cat-hotel/query'",
+    "'/d1/database/cat-hotel/query'",
+  ])
+    assert.equal(devWrite(path), null, path)
+})
+
+test('Cloudflare: a computed key or a spread that can override a literal GET asks', () => {
+  for (const code of [
+    `async () => { const o = { method: 'GET', path: ${workerPath} }; o['meth' + 'od'] = 'DELETE'; return cloudflare.request(o) }`,
+    `async () => { const extra = (await cloudflare.request({ method: 'GET', path: '/accounts' })).result; return cloudflare.request({ method: 'GET', path: ${workerPath}, ...extra }) }`,
+  ])
+    assert.equal(cf(PROD, code), 'ask', code)
+})
+
+test('GitHub Actions: approving a deployment, force-cancelling, cancelling or deleting a run asks', () => {
+  for (const command of [
+    'gh api -X POST repos/catati/cat-hotel/actions/runs/5/pending_deployments -F environment_ids[]=1 -f state=approved -f comment=ok',
+    'gh api -X POST repos/catati/cat-hotel/actions/runs/5/approve',
+    'gh api -X POST repos/catati/cat-hotel/actions/runs/5/force-cancel',
+    'gh api -X POST repos/catati/cat-hotel/actions/runs/5/cancel',
+    'gh api -X DELETE repos/catati/cat-hotel/actions/runs/5',
+    'gh run cancel 5 -R catati/cat-hotel',
+    'gh run delete 5',
+    `curl -X POST -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/catati/cat-hotel/actions/workflows/deploy-prod.yml/dispatches -d '{"ref":"main"}'`,
+    'curl -d @body.json https://api.github.com/repos/catati/cat-hotel/actions/runs/5/pending_deployments',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  assert.equal(
+    sh('gh api repos/catati/cat-hotel/actions/runs/5/pending_deployments'),
+    null
+  )
+  assert.equal(
+    sh('curl -s https://api.github.com/repos/catati/cat-hotel/actions/runs'),
+    null
+  )
+})
+
+test('Bash: a prod write fed to a shell, interpreter or process wrapper asks', () => {
+  const feeds = [
+    (c) => `echo "${c}" | bash`,
+    (c) => `echo ${c} | sh`,
+    (c) => `printf '%s\\n' '${c}' | sh -s`,
+    (c) => `bash <<< "${c}"`,
+    (c) => `bash <<<"${c}"`,
+    (c) => `bash <<'EOF'\n${c}\nEOF`,
+    (c) => `su -c "${c}" deploy`,
+    (c) => `busybox sh -c "${c}"`,
+    (c) => `fish -c "${c}"`,
+    (c) => `setsid ${c}`,
+    (c) => `ionice -c 3 ${c}`,
+    (c) => `flock /tmp/lock ${c}`,
+    (c) => `find . -maxdepth 0 -exec ${c} \;`,
+    (c) => `tmux new -d '${c}'`,
+    (c) => `screen -dm ${c}`,
+    (c) => `strace -f ${c}`,
+    (c) => `python3 -c "import os; os.system('${c}')"`,
+    (c) => `python3 -c "import subprocess; subprocess.run('${c}'.split())"`,
+    (c) => `node -e "require('child_process').execSync('${c}')"`,
+    (c) => `perl -e "system('${c}')"`,
+    (c) => `ruby -e "system('${c}')"`,
+    (c) => `python3 - <<'PY'\nimport os\nos.system('${c}')\nPY`,
+    (c) => `bash <(echo "${c}")`,
+    (c) => `at now <<< "${c}"`,
+    (c) => `echo "${c}" | at now`,
+    (c) => `unbuffer ${c}`,
+    (c) => `gtimeout 5 ${c}`,
+    (c) => `kubectl exec pod -- ${c}`,
+    (c) => `parallel ::: "${c}"`,
+  ]
+  for (const feed of feeds)
+    for (const write of PROD_WRITES)
+      assert.equal(sh(feed(write)), 'ask', feed(write))
+  for (const command of [
+    'echo "make deploy-dev" | bash',
+    'bash <<< "npx wrangler deploy --env dev"',
+    "python3 -c \"print('hello')\"",
+    "node -e \"console.log('deploy')\"",
+    'find . -name "*.sql" -exec grep -l DELETE {} \;',
+    'flock /tmp/lock make deploy-dev',
   ])
     assert.equal(sh(command), null, command)
 })
