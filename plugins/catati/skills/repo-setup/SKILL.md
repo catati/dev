@@ -77,7 +77,7 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
    ```
 
    Exit 0 means no door. With no door, the session merges the PR once the record names its head and CI is green. Any other exit, or no old pin, means a door. With a door, ask the operator once to merge it, after the record and green CI, and quote the gate output.
-7. If this PR must merge before or after another PR, record the order as a native GitHub dependency of the later one. Read the earlier one's `id` (not its number) from `gh api 'repos/{owner}/{repo}/issues/<earlier>'`, then run `gh api 'repos/{owner}/{repo}/issues/<later>/dependencies/blocked_by' -F issue_id=<id>`.
+7. If this PR must merge before or after another PR, record the order in the later PR's body as one line `Blocked by: <ref>, <ref>`. Each ref is `#N` or `owner/repo#N`, per the Merges section of `conventions/issues-and-prs.md`. Do not add a native `blocked_by` dependency to a PR, because GitHub refuses one on a PR. The prod guard refuses the merge while a named issue or PR is open.
 
 ## 6. Report
 
