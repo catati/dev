@@ -1839,3 +1839,27 @@ test('guard: a word the shell fills in, splits or globs never proves a read, a d
     'gh pr merge 7 --disable-auto': null,
   })
 })
+
+test('guard: a for variable stands for its words only when nothing in the command can change it', () => {
+  for (const command of [
+    'for f in dry-run; do unset f; npx wrangler deploy --env prod --$f; done',
+    'for e in dev; do unset e; npx wrangler deploy --env "$e"; done',
+    'for c in dev; do unset c; shopify app deploy --config "$c"; done',
+    'for e in dev; do n=e; unset "$n"; npx wrangler deploy --env "$e"; done',
+    'for e in dev; do let e++; npx wrangler deploy --env "$e"; done',
+    'for e in dev; do coproc e { :; }; npx wrangler deploy --env "$e"; done',
+    'for e in dev; do (( e = 0 )); npx wrangler deploy --env "$e"; done',
+    'for e in dev; do wait -p e; npx wrangler deploy --env "$e"; done',
+    'for e in dev; do exec {e}>/dev/null; npx wrangler deploy --env "$e"; done',
+    'u() { unset e; }; for e in dev; do u; npx wrangler deploy --env "$e"; done',
+    `for e in dev; do $'\\x75nset' $'\\x65'; npx wrangler deploy --env "$e"; done`,
+    'for e in dev; do trap "unset e" DEBUG; npx wrangler deploy --env "$e"; done',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    'for app in admin app landing; do pnpm --dir $app exec wrangler deploy --env dev; done',
+    'for e in dev; do npx wrangler deploy --env "$e"; done',
+    'for c in dev; do shopify app deploy --config "$c"; done',
+  ])
+    assert.equal(sh(command), null, command)
+})
