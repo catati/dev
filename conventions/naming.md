@@ -86,5 +86,5 @@ Each row that can end names the open issue that tracks its end. A row with no en
 | `cat-hotel` api top-level Worker name `catati-cat-hotel-api` | `<repo>-<component>` | The top level stops naming it, by 2026-12-31. | [cat-hotel#533](https://github.com/catati/cat-hotel/issues/533) |
 | `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod`. | [cat-hotel#535](https://github.com/catati/cat-hotel/issues/535) |
 | Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. | [cat-hotel#536](https://github.com/catati/cat-hotel/issues/536) |
-| GitHub environments `development` and `production` in `catsper` | `dev` and `prod` only | `catsper` renames them. | [catsper#648](https://github.com/catati/catsper/issues/648) |
-| Catsper stem `catati-catsper` | The repo name is the stem. | Catsper renames its resources. | [catsper#648](https://github.com/catati/catsper/issues/648) |
+| GitHub environments `development` and `production` in `catsper` | `dev` and `prod` only | `catsper` renames them. | [dev#105](https://github.com/catati/dev/issues/105) |
+| Catsper stem `catati-catsper`, which the dev D1 database still uses | The repo name is the stem. | No Catsper resource uses `catati-catsper`. | [dev#106](https://github.com/catati/dev/issues/106) |

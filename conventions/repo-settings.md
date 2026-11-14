@@ -1,6 +1,6 @@
 # Repo settings
 
-These settings live in GitHub, not in a repo's files. The operator changes them in the repo's Settings. Agents read them and report a difference from this page, and change none of them.
+These settings live in GitHub, not in a repo's files. The operator changes them in the repo's Settings, except the `main` ruleset, which is an organization ruleset in the `catati` organization's settings. Agents read them and report a difference from this page, and change none of them.
 
 | Setting | Rule | Check |
 | --- | --- | --- |

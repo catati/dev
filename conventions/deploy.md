@@ -74,7 +74,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | Every `wrangler.jsonc` has `env.dev` and `env.prod`. Each sets `name` and the `account_id` of its account. The top level holds only shared keys. | `catati check`. Which account each `account_id` names, and the top-level keys, need judgment. |
 | Every Wrangler command passes `--env`. | `catati check` for remote commands in `package.json` scripts, `Makefile`s and `builds.json`. Workflow steps need judgment. |
 | Terraform owns long-lived resources: D1, R2, queues and Turnstile. `wrangler.jsonc` owns Workers, bindings, vars, routes, crons, queue consumers and Workflows. `builds.json` owns Workers Builds triggers, one file per account. The dashboard holds secret values only. | judgment |
-| Plain vars live only in `wrangler.jsonc`, except `COMMIT`, which each deploy command passes as `--var COMMIT:<sha>`. No Wrangler command passes `--keep-vars`. | `catati check` for `--keep-vars`. Where plain vars live needs judgment. |
+| Plain vars live only in `wrangler.jsonc`, except `COMMIT`. A Worker that reads `COMMIT` gets it from its deploy command as `--var COMMIT:<sha>`. No Wrangler command passes `--keep-vars`. | `catati check` for `--keep-vars`. Where plain vars live needs judgment. |
 | Each Worker lists its secret names in its deploy doc. A secret value never enters a repo, a log or a PR. | judgment |
 | A prod token lives only in GitHub environment `prod` (deploys from `main` only) or `plan-prod` (read-only). Never in a repository secret or a cloud environment. | judgment |
 | Each token reaches one account with the fewest permissions. A Workers token names the Workers it may edit, except where Cloudflare needs product scope: to create a Worker or change a Custom Domain. | judgment |
@@ -106,4 +106,4 @@ Each row names the open issue that tracks its end. A row with no open issue fail
 | `cat-hotel` frontends' top-level prod config | The top level holds only shared keys. | Each frontend's prod config lives only in `env.prod`. | [cat-hotel#534](https://github.com/catati/cat-hotel/issues/534) |
 | `catati-brand-guide` deploys `main` straight to prod | `deploy-prod` is the only path | `brand-guide` adds `deploy-prod`. | [dev#98](https://github.com/catati/dev/issues/98) |
 | Old `cat-hotel` dev resources in the prod account | The prod account holds prod resources only. | They are deleted. | [cat-hotel#245](https://github.com/catati/cat-hotel/issues/245) |
-| Catsper dev resources in the prod account | The prod account holds prod resources only. | They move to `catati-dev` or are deleted. | [catsper#648](https://github.com/catati/catsper/issues/648) |
+| Catsper dev resources D1 `catsper-dev` and R2 `catsper-dev-photos` in the prod account | The prod account holds prod resources only. | They are deleted. Dev already runs in `catati-dev`. | [dev#107](https://github.com/catati/dev/issues/107) |

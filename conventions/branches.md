@@ -10,7 +10,7 @@
 
 ## Rulesets
 
-Each repo has two branch rulesets on its default branch, `main` and `check`.
+Each repo has two branch rulesets on its default branch, `main` and `check`. `main` is one organization ruleset that the operator edits in the `catati` organization's settings. `check` is set per repo, in that repo's settings.
 
 | Rule | Check |
 | --- | --- |
