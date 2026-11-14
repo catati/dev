@@ -365,6 +365,79 @@ test('version-source needs one MAJOR.MINOR.PATCH version, in the root package.js
 	});
 });
 
+const lockFixture = (name) => readFileSync(new URL(`fixtures/catati-dev-lock/${name}`, import.meta.url), 'utf8');
+const devSha = '17cbb087dc1f79710b4e5ef49b66aa68c931a66c';
+const pnpmLock = lockFixture('pnpm-lock.yaml');
+const npmLock = lockFixture('package-lock.json');
+const npmHttpsLock = npmLock.replace('git+ssh://git@github.com/', 'git+https://github.com/');
+const pnpmLockWith = (line, text) => pnpmLock.split('\n').map((l, i) => (i === line - 1 ? text : l)).join('\n');
+const lockLines = (result) => result.lines.map((l) => Number(l.match(/^catati-dev-lock: pnpm-lock\.yaml: line (\d+) /)?.[1]));
+
+test('catati-dev-lock passes a lockfile that pins @catati/dev to git+https at a commit', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLock }, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': npmHttpsLock }, t), { status: 0, lines: [] });
+	const noPin = JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'x' } } });
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': noPin, 'web/pnpm-lock.yaml': pnpmLockWith(15, '        specifier: x') }, t), {
+		status: 0,
+		lines: [],
+	});
+});
+
+test('catati-dev-lock flags each pnpm entry that resolves @catati/dev another way, at its line', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLockWith(16, `        version: git+ssh://git@github.com/catati/dev.git#${devSha}`) }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: pnpm-lock.yaml: line 16 resolves @catati/dev to git+ssh://git@github.com/catati/dev.git#${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+		],
+	});
+	const resolution = (fields) => `    resolution: {${fields}}`;
+	for (const [line, text] of [
+		[15, '        specifier: git+https://github.com/catati/dev.git#main'],
+		[15, `        specifier: git+https://github.com/catati/dev.git#${devSha.slice(0, 7)}`],
+		[16, `        version: git+https://git@github.com:catati/dev.git#${devSha}`],
+		[16, `        version: https://codeload.github.com/catati/dev/tar.gz/${devSha}`],
+		[27, `  '@catati/dev@ssh://git@github.com/catati/dev.git#${devSha}':`],
+		[27, `  '@catati/dev@git+https://github.com/someone/dev.git#${devSha}':`],
+		[28, resolution(`tarball: https://codeload.github.com/catati/dev/tar.gz/${devSha}`)],
+		[28, resolution(`commit: ${devSha}, repo: git@github.com:catati/dev.git, type: git`)],
+		[28, resolution(`commit: ${'0'.repeat(40)}, repo: https://github.com/catati/dev.git, type: git`)],
+		[43, `  '@catati/dev@https://codeload.github.com/catati/dev/tar.gz/${devSha}': {}`],
+	]) {
+		assert.deepEqual(lockLines(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLockWith(line, text) }, t)), [line], text);
+	}
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'pnpm-lock.yaml': pnpmLockWith(28, resolution(`tarball: https://codeload.github.com/catati/dev/tar.gz/${devSha}`)) }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: pnpm-lock.yaml: line 28 is resolution: {tarball: https://codeload.github.com/catati/dev/tar.gz/${devSha}}; use resolution: {commit: ${devSha}, repo: https://github.com/catati/dev.git, type: git}`,
+		],
+	});
+});
+
+test('catati-dev-lock flags the git+ssh resolved form that npm writes, and every other npm form', (t) => {
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': npmLock }, t), {
+		status: 1,
+		lines: [
+			`catati-dev-lock: package-lock.json: packages["node_modules/@catati/dev"].resolved is git+ssh://git@github.com/catati/dev.git#${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+		],
+	});
+	const lock = JSON.parse(npmHttpsLock);
+	lock.packages[''].devDependencies['@catati/dev'] = 'github:catati/dev';
+	lock.packages['node_modules/tool'] = { version: '1.0.0', dependencies: { '@catati/dev': `git@github.com:catati/dev.git#${devSha}` } };
+	lock.packages['node_modules/tool/node_modules/@catati/dev'] = { resolved: `https://codeload.github.com/catati/dev/tar.gz/${devSha}` };
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': JSON.stringify(lock, null, 2) }, t), {
+		status: 1,
+		lines: [
+			'catati-dev-lock: package-lock.json: packages[""].devDependencies["@catati/dev"] is github:catati/dev; use git+https://github.com/catati/dev.git#<sha>',
+			`catati-dev-lock: package-lock.json: packages["node_modules/tool"].dependencies["@catati/dev"] is git@github.com:catati/dev.git#${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+			`catati-dev-lock: package-lock.json: packages["node_modules/tool/node_modules/@catati/dev"].resolved is https://codeload.github.com/catati/dev/tar.gz/${devSha}; use git+https://github.com/catati/dev.git#<sha>`,
+		],
+	});
+	assert.deepEqual(runCheck({ ...cleanRepo(), 'package-lock.json': '{ "packages": ' }, t), {
+		status: 1,
+		lines: ['catati-dev-lock: package-lock.json: cannot parse as JSON'],
+	});
+});
+
 test('resource-names flags a Wrangler resource that is not <repo>-<component> or ends in an env', (t) => {
 	const config = (names) =>
 		JSON.stringify({
