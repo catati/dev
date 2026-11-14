@@ -448,7 +448,7 @@ test('merge: a verified merge must pin the verified head commit', () => {
     assert.equal(shMerge(github, command), null, command)
 })
 
-test('merge: a verified catati/terraform PR asks when it changes a prod path, passes when docs only', () => {
+test('merge: a verified catati/terraform PR asks when it changes a workflow, passes for a prod root or docs', () => {
   const verified = (files) => ({ comments: [pass(HEAD)], files })
   const github = fakeGitHub({
     'catati/terraform#1': verified(['cat-hotel/prod/main.tf']),
@@ -459,23 +459,23 @@ test('merge: a verified catati/terraform PR asks when it changes a prod path, pa
     'catati/terraform#6': { files: ['README.md'] },
     'catati/terraform#7': verified([
       {
-        filename: 'cat-hotel/archive/main.tf',
-        previous_filename: 'cat-hotel/prod/main.tf',
+        filename: 'docs/old-deploy.yml',
+        previous_filename: '.github/workflows/deploy.yml',
       },
     ]),
   })
-  assert.equal(mcpMerge(github, 'catati', 'terraform', 1), 'ask')
-  assert.equal(mcpMerge(github, 'Catati', 'Terraform', 1), 'ask')
+  assert.equal(mcpMerge(github, 'catati', 'terraform', 1), null)
+  assert.equal(mcpMerge(github, 'catati', 'terraform', 2), 'ask')
+  assert.equal(mcpMerge(github, 'Catati', 'Terraform', 2), 'ask')
   assert.match(
     run(github, 'mcp__github__merge_pull_request', {
       owner: 'Catati',
       repo: 'Terraform',
-      pullNumber: 1,
+      pullNumber: 2,
       expectedHeadSha: HEAD,
     }).reason,
-    /applies production/
+    /apply production/
   )
-  assert.equal(mcpMerge(github, 'catati', 'terraform', 2), 'ask')
   assert.equal(mcpMerge(github, 'catati', 'terraform', 3), null)
   assert.equal(mcpMerge(github, 'catati', 'terraform', 4), null)
   assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 5), null)
@@ -491,7 +491,7 @@ test('merge: reads every page of comments and files', () => {
     },
     'catati/terraform#2': {
       comments: [pass(HEAD)],
-      files: [...filler(250, (i) => `docs/${i}.md`), 'cat-hotel/prod/main.tf'],
+      files: [...filler(250, (i) => `docs/${i}.md`), '.github/workflows/deploy.yml'],
     },
   })
   assert.equal(mcpMerge(github, 'catati', 'cat-hotel', 1), null)
@@ -621,7 +621,7 @@ test('merge: every segment counts, a deny wins over an ask and asks join', () =>
       'catati/cat-hotel#7': {},
       'catati/terraform#6': {
         comments: [pass(HEAD)],
-        files: ['cat-hotel/prod/main.tf'],
+        files: ['.github/workflows/deploy.yml'],
       },
     },
     { '/work': 'catati/cat-hotel' }
@@ -641,7 +641,7 @@ test('merge: every segment counts, a deny wins over an ask and asks join', () =>
   )
   const both = shReason(github, `make deploy-prod && ${prodMerge}`)
   assert.match(both, /deploys to production/)
-  assert.match(both, /catati\/terraform#6 applies production/)
+  assert.match(both, /catati\/terraform#6 changes \.github\/workflows/)
 })
 
 test('merge: fails closed with ask, naming the gh error, when GitHub or the PR cannot be read', () => {
@@ -685,7 +685,7 @@ const roundTwo = () =>
       'catati/cat-hotel#8': { comments: [pass(HEAD)] },
       'catati/terraform#6': {
         comments: [pass(HEAD)],
-        files: ['cat-hotel/prod/main.tf'],
+        files: ['.github/workflows/deploy.yml'],
       },
       'catati/terraform#7': { comments: [pass(HEAD)] },
     },
