@@ -15,7 +15,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 | Shopify | Store `catati-dev-store`, app `cat-hotel-dev` | Store `3dd4ee` (`catati-nz`), app `cat-hotel-prod` |
 | Data | A copy of active prod data, which may be reset | Customer data, restored with D1 Time Travel |
 | Workers reach it by | A merge to `main`, through Workers Builds | The operator runs the `deploy-prod` job |
-| Terraform reaches it by | A merge to `main` runs `apply-dev` | A merge to `main` runs `apply-prod` |
+| Terraform reaches it by | A merge to `main` runs `apply-dev` | The operator runs the `apply-prod` job |
 | Agents may | Plan, apply, deploy, migrate and reset | Read. Write only under the rule in [Who changes prod](#who-changes-prod). |
 | Tokens live in | GitHub environment `dev`, and the `catati-dev` cloud environment | GitHub environments `prod` and `plan-prod` |
 
@@ -34,7 +34,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | --- | --- | --- | --- |
 | Worker code or `wrangler.jsonc` | `<package>-verify`, with `wrangler versions upload --dry-run` for both envs | Workers Builds runs `wrangler deploy --env dev` | The operator runs `deploy-prod` |
 | D1 migration | The migration, and a test that the live code still works after it | Applied to dev D1 before the dev deploy | `deploy-prod` applies it first |
-| Long-lived resource (D1, R2, queue, Turnstile) | `plan-dev` and `plan-prod` in the job summary | `apply-dev`, and `apply-prod` when the prod root changes | The operator's merge |
+| Long-lived resource (D1, R2, queue, Turnstile) | `plan-dev` and `plan-prod` in the job summary | `apply-dev`, and `plan-prod` for the merged commit | The operator runs `apply-prod` |
 | Workers Builds trigger | The `builds.json` check | `builds.mjs apply` | None. Prod has no Workers Builds trigger. |
 | Secret value | None. A secret never enters a PR. | None | The operator sets it in the dashboard |
 | Shopify app config | The `shopify.app.<env>.toml` diff | An agent may run `shopify app deploy --config dev` | The operator runs `--config prod` |
@@ -53,6 +53,18 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | Its token is a `catati-prod` account token with Workers Admin at product level, D1 Edit, and Zone Workers Routes Write on the prod domain. Product level is needed because Cloudflare lets only Workers Admin create a Worker, and Custom Domains have no per-Worker role yet. | judgment |
 | No other job deploys Workers in GitHub environment `prod`. Terraform's `apply-prod` also runs there. | judgment |
 | Rollback is in the Cloudflare dashboard, so it works when GitHub is down. It restores code only, not routes, domains, crons or queue consumers. To restore those, run `deploy-prod` on the older commit. | judgment |
+
+## The `apply-prod` job
+
+`apply-prod` is the only way a Terraform change reaches prod. It is a job in the Terraform repo's `deploy.yml`. A push to `main` runs `apply-dev` and, alongside it, `plan-prod`, which writes the prod plan for that commit to the job summary.
+
+| Rule | Check |
+| --- | --- |
+| `apply-prod` runs only on `workflow_dispatch`. No push trigger runs it. | judgment |
+| Its first steps fail unless `github.triggering_actor` is the operator, `catati-ops`, and `github.ref` is `main`. | judgment |
+| It takes a `sha` input and fails before any token use unless `main` is still at that commit, so it applies only the plan the operator read. A saved plan file is not used, because it holds sensitive values in plain text. | judgment |
+| It runs in GitHub environment `prod`, which deploys from `main` only. | judgment |
+| To roll back, revert the PR, merge the revert, then run `apply-prod` on the new commit. | judgment |
 
 ## Config and secrets
 
@@ -81,7 +93,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | An agent changes prod only when the operator asks for that specific prod action. Without that ask, agents do not change prod. | judgment |
 | Where this page says the operator runs or merges something, an agent may do it when the operator asks for it. | judgment |
 | The prod guard hook asks for approval on every prod write, in every session. Prod reads pass with no prompt. | The `catati` plugin's PreToolUse hook (`plugins/catati/hooks/guard-prod.mjs`) |
-| A merge of a PR that changes a prod Terraform root or `.github/workflows/` is a prod action, because the merge applies prod. | judgment |
+| A merge of a PR that changes `.github/workflows/` is a prod action, because a workflow change could make a merge apply prod. A merge that changes only a prod Terraform root is not: it plans prod, and `apply-prod` applies it. | judgment |
 
 ## Exceptions
 

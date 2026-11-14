@@ -57,7 +57,7 @@ const prodWrite = (reason) =>
 
 const VERIFIER_PASS = /^VERIFIER PASS ([0-9a-f]{40})$/
 const TERRAFORM = 'catati/terraform'
-const TERRAFORM_PROD_PATHS = ['cat-hotel/prod/', '.github/workflows/']
+const TERRAFORM_PROD_PATHS = ['.github/workflows/']
 const GH_SHORT_VALUE_FLAGS = new Set('RXHfFqtpbA')
 const GH_SHORT_BOOLEAN_FLAGS = new Set('idmrsh')
 const GH_LONG_BOOLEAN_FLAGS = new Set([
@@ -234,7 +234,7 @@ function mergeDecision(
     pull.files.some((f) => TERRAFORM_PROD_PATHS.some((p) => f.startsWith(p)))
   )
     return prodWrite(
-      `Merging ${slug}#${number} applies production at once, because it changes cat-hotel/prod/ or .github/workflows/. Read its plan-prod job first.`
+      `Merging ${slug}#${number} changes .github/workflows/, and a workflow change can make a merge apply production. Read the workflow diff first.`
     )
   return allow
 }
