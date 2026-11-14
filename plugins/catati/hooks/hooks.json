@@ -5,10 +5,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/probe.sh\""
-          },
-          {
-            "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs\""
           }
         ]
@@ -16,11 +12,11 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|MultiEdit|Write|NotebookEdit|mcp__cloudflare__execute|mcp__Shopify__.*|mcp__github__merge_pull_request|mcp__github__enable_pr_auto_merge|mcp__github__actions_run_trigger",
+        "matcher": "Bash|mcp__cloudflare__execute|mcp__Shopify__.*|mcp__github__actions_run_trigger",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use.mjs\""
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/prod-guard.mjs\""
           }
         ]
       }
