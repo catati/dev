@@ -1698,3 +1698,67 @@ test('guard: a program word the shell splits, a GraphQL run behind a comma or co
   ])
     assert.equal(sh(command), null, command)
 })
+
+test('guard: a read flag counts only when it is on once, and a trusted $ name counts only when the command never sets it', () => {
+  for (const command of [
+    'npx wrangler deploy --env prod --dry-run=no',
+    'npx wrangler deploy --env prod --dry-run=1',
+    'npx wrangler deploy --env prod --dry-run=TRUE',
+    'npx wrangler deploy --env prod --dry-run --no-dry-run',
+    'npx wrangler deploy --env prod --dry-run --dry-run=false',
+    'npx wrangler deploy --env prod --dry-run --dry-run false',
+    'npx wrangler deploy --env prod --dry-run --dryRun=false',
+    'npx wrangler deploy --env prod --dry-run --no-bundle --dry-run=false',
+    'npx wrangler deploy --env prod --help --no-help',
+    'npx wrangler deploy --env prod -v --version=false',
+    'npx wrangler d1 execute cat-hotel --env prod --local --no-local --command "DELETE FROM b"',
+    'npx wrangler d1 execute cat-hotel --env prod --local --local=false --command "DELETE FROM b"',
+    'HOME="make deploy-prod "; $HOME/x',
+    'export HOME="make deploy-prod "; $HOME/x',
+    'PWD="make deploy-prod "; $PWD/x',
+    'TMPDIR="npx wrangler deploy --env prod "; $TMPDIR/x',
+    'cd /tmp; HOME="make deploy-prod " && ${HOME}/x',
+    'declare HOME="make deploy-prod "; $HOME/x',
+    'declare "HO""ME=make deploy-prod "; $HOME/x',
+    'N=HOME; declare "$N=make deploy-prod "; $HOME/x',
+    'read -r HOME <<< "make deploy-prod "; $HOME/x',
+    'printf -v HOME "make deploy-prod "; $HOME/x',
+    'for HOME in "make deploy-prod "; do $HOME/x; done',
+    'declare -n R=HOME; R="make deploy-prod "; $HOME/x',
+    ': ${TMPDIR:="make deploy-prod "}; $TMPDIR/x',
+    `eval $'\\x48OME="make deploy-prod "'; $HOME/x`,
+    'source <(printf "HO%sME=x" ""); $HOME/x',
+    'gh api graphql -f query="mutation { a: addComment(input:{subjectId:\\"x\\", body:\\"\\"\\"p\\\\\\"\\"\\" \\"\\"\\"}) { clientMutationId } rerequestCheckSuite(input:{checkSuiteId:\\"a\\",repositoryId:\\"b\\"}) { clientMutationId } b: addComment(input:{subjectId:\\"x\\", body:\\"\\"\\"q\\"\\"\\"}) { clientMutationId } }"',
+    'gh api graphql -f query="mutation { a: addComment(input:{subjectId:\\"x\\", body:\\"open }) { clientMutationId } }"',
+    'declare -x CLOUDFLARE_ACCOUNT_ID=0000; npx wrangler deploy --env dev',
+    'typeset -x CLOUDFLARE_ACCOUNT_ID=0000; npx wrangler deploy --env dev',
+    'readonly CLOUDFLARE_ACCOUNT_ID=0000; npx wrangler deploy --env dev',
+    'declare CLOUDFLARE_ACCOUNT_ID=0000; npx wrangler deploy --env dev',
+    'CLOUDFLARE_ACCOUNT_ID=0000; export CLOUDFLARE_ACCOUNT_ID; npx wrangler deploy --env dev',
+    'read CLOUDFLARE_ACCOUNT_ID <<< 0000; export CLOUDFLARE_ACCOUNT_ID; npx wrangler deploy --env dev',
+    'shopify app deploy --config dev --config prod',
+    'shopify app deploy --config=dev -c shopify.app.prod.toml',
+  ])
+    assert.equal(sh(command), 'ask', command)
+  for (const command of [
+    '$HOME/.local/bin/uv run x.py',
+    '"$HOME"/bin/tool --help',
+    '${CLAUDE_PROJECT_DIR}/x.sh',
+    'cd api && $PWD/node_modules/.bin/vitest run',
+    'export PATH="$HOME/bin:$PATH"; $HOME/bin/tool',
+    'npx wrangler deploy --env prod --dry-run',
+    'npx wrangler deploy --env prod --dry-run=true',
+    'npx wrangler deploy --env prod --dry-run true',
+    'npx wrangler deploy --env prod --dry-run -- --dry-run=false',
+    'npx wrangler d1 execute cat-hotel --env prod --local --command "DELETE FROM b"',
+    'gh api graphql -f query="mutation { addComment(input:{subjectId:\\"x\\", body:\\"\\"\\"rerun \\\\\\"\\"\\" the workflow\\"\\"\\"}) { clientMutationId } }"',
+    `declare -x CLOUDFLARE_ACCOUNT_ID=${DEV}; npx wrangler deploy --env dev`,
+    'shopify app deploy --config dev -c shopify.app.dev.toml',
+  ])
+    assert.equal(sh(command), null, command)
+  expectAll(roundTwo(), {
+    [`gh pr merge 7 --disable-auto --disable-auto=false ${PIN}`]: 'deny',
+    [`gh pr merge 7 --disable-auto=false --disable-auto ${PIN}`]: 'deny',
+    'gh pr merge 7 --disable-auto': null,
+  })
+})
