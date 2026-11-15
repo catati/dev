@@ -189,6 +189,18 @@ test('an allow line that names no approver does not suppress its check', (t) => 
 	});
 });
 
+test('a bad allow line in a file with no finding is still reported', (t) => {
+	const lines = (allow) => runCheck({ ...cleanRepo(), Makefile: `# ${allow}\n${cleanMakefile}` }, t).lines;
+	assert.deepEqual(lines('catati-allow(make-targets): later; expires 2027-06-30'), [
+		'allow: Makefile: catati-allow(make-targets) names no approver; end the line with "; approved by <name>"',
+	]);
+	assert.deepEqual(lines('catati-allow(make-targets): later; expires 2000-01-01; approved by Shien'), [
+		'allow: Makefile: catati-allow(make-targets) expired 2000-01-01',
+	]);
+	assert.deepEqual(lines('catati-allow(make-targets) later'), ['allow: Makefile: malformed allow: # catati-allow(make-targets) later']);
+	assert.deepEqual(lines('catati-allow(make-targets): later; expires 2999-01-01; approved by Shien'), []);
+});
+
 test('workflow-names flags a workflow that is not ci.yml or deploy.yml', (t) => {
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': 'on: push\n' }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/apply-dev.yml': 'on: push\n' }, t), {

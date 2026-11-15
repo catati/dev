@@ -2,12 +2,12 @@
 
 Catati repos fully adopt pstack for development, and everything follows pstack. catati/dev exists to make each repo fully adopt pstack: it supplies what a repo needs for pstack to work there, and adds nothing pstack already handles.
 
-This repo is the Catati dev cloud environment (`catati-dev` on claude.ai/code), as files.
+This repo is the Catati dev cloud environment (`dev` on claude.ai/code), as files.
 Each field of the environment form has one source here. Change the file, not the form.
 
 | Form field | Source |
 |---|---|
-| Name | `catati-dev` |
+| Name | `dev` |
 | Network access | Custom: paste [env/network-allowlist.txt](env/network-allowlist.txt), tick "also allow default package managers" |
 | Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank values in the form. Dev values only: every user of the environment can read them. |
 | Setup script | Paste [env/setup.sh](env/setup.sh) |
@@ -79,6 +79,7 @@ A line in `.catati-allow` turns off its check for the whole repo.
 An expired or malformed allow line is a finding with the check `allow`, and it turns off nothing.
 A date that does not exist, such as `2026-02-31`, makes the line malformed.
 A line with no `approved by <name>` is a finding too, such as one written before the approver was required.
+`catati check` reports these lines in every file a check reads, also when the file has no other finding.
 
 A repo's own checks use the same format, such as `catati-allow(commentUse): <reason>; expires YYYY-MM-DD; approved by <name>`. In any file other than `.catati-allow`, `catati check` skips a line that names a check it does not have, and leaves that line to the repo check that reads it. So a misspelled check name in such a file turns off nothing and is not reported. `.catati-allow` holds only `catati check` lines, so an unknown check name there is malformed.
 
@@ -126,7 +127,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 | --- | --- |
 | `/catati:repo-setup` | Clones catati/dev `main` into a temp folder and runs `catati setup` from it in the target repo, removes an old `@catati/dev` pin, adds the `CLAUDE.md` conventions link and the rule table, creates missing status labels, reports how the repo's GitHub settings differ from the conventions, then opens one PR and leaves its body and merge to pstack. A repo already up to date gets no PR. Run it again after each `catati/dev` release. |
 | SessionStart hook `session-start.mjs` | Installs a missing `~/.claude/rules/pstack-models.md`, and, where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it, in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the cwd), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
-| WorktreeCreate and WorktreeRemove hook `worktree.mjs` | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. In a repo it adds a locked worktree at `<toplevel>/.claude/worktrees/<name>` on branch `worktree-<name>`, as Claude Code does. In a folder that is no repo, such as `/home/user` in a project thread, it makes `<cwd>/.claude/worktrees/<name>/` with one locked worktree per repo directly below, at the same relative paths. Each worktree starts at its repo's `HEAD`, not `origin/HEAD`, so a subagent sees the root's unpushed work. Each branch records `catatiBase` and gets `pushRemote=no-push`. Remove deletes a clean worktree on its own `worktree-<name>` branch, and that branch when it has no commits beyond `catatiBase`. It keeps, locked, a worktree that is dirty (an untracked nested repo or worktree counts), holds another worktree of its repo, or is on another branch, and exits 1. |
+| WorktreeCreate and WorktreeRemove hook `worktree.mjs` | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. In a repo it adds a locked worktree at `<toplevel>/.claude/worktrees/<name>` on branch `worktree-<name>`, as Claude Code does. In a folder that is no repo, such as `/home/user` in a project thread, it makes `<cwd>/.claude/worktrees/<name>/` with one locked worktree per repo directly below, at the same relative paths. Each worktree starts at its repo's `HEAD`, not `origin/HEAD`, so a subagent sees the root's unpushed work. Each branch records `catatiBase` and gets `pushRemote=no-push`. Remove deletes a clean worktree on its own `worktree-<name>` branch, and that branch when it has no commits beyond `catatiBase`. It keeps, locked, a worktree that is dirty (an untracked nested repo or worktree counts), holds another worktree of its repo, holds a repo or worktree inside an ignored folder, or is on another branch, and exits 1. It still removes a worktree whose HEAD reflog holds commits on no branch, such as one an amend replaced, and prints their hashes. |
 
 A `WorktreeCreate` hook replaces Claude Code's own `git worktree` logic in every session, local ones included, and Claude Code then skips `.worktreeinclude`. Claude Code does not call `WorktreeRemove` when a subagent ends, because it cannot tell whether a hook-made worktree holds changes. So the root cleans up: merge each subagent's branch with `git -C <repo> merge --ff-only worktree-<name>` (or cherry-pick when two ran in parallel), then run `node "$(ls -t $(find ~/.claude/plugins -path '*/catati/hooks/worktree.mjs') | head -1)" remove <worktree path>`. Remove refuses any path that is not a `…/worktrees/<name>` folder. Like `git worktree remove`, it deletes ignored files (such as `.env` or `.dev.vars`) in a worktree it counts as clean. Subagents commit and never push; only the root pushes. A worktree has no `node_modules`, so a subagent that runs tests runs `make install` first. `pushRemote=no-push` stops a bare `git push` only, not `git push origin <ref>`.
 
@@ -192,5 +193,5 @@ Treat every committed value as public.
 
 ## Not covered
 
-- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be an account API token created in the `catati-dev` account, never in the production "Catati" account.
+- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` is the dev user token `catati-dev/all`. Its Account Resources hold only the `catati-dev` account, never the production "Catati" account. It is a user token because the Workers Builds API rejects account tokens (error 12006).
 - The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet.
