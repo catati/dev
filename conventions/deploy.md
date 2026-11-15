@@ -16,7 +16,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 | Data | A copy of active prod data, which may be reset | Customer data, restored with D1 Time Travel |
 | Workers reach it by | A merge to `main`, through Workers Builds | The operator runs the `deploy-prod` job |
 | Terraform reaches it by | A merge to `main` runs `apply-dev` | The operator runs the `apply-prod` job |
-| Agents may | Plan, apply, deploy, migrate and reset | Read. Write only under the rule in [Who changes prod](#who-changes-prod). |
+| Agents may | Plan, apply, deploy, migrate and reset. Use the Cloudflare, Shopify and GitHub connectors, writes included. | Read only. Write only under [Who changes prod](#who-changes-prod). |
 | Tokens live in | GitHub environment `dev`, and the `dev` cloud environment | GitHub environments `prod` and `plan-prod` |
 
 | Rule | Check |
@@ -77,7 +77,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | Plain vars live only in `wrangler.jsonc`, except `COMMIT`. A Worker that reads `COMMIT` gets it from its deploy command as `--var COMMIT:<sha>`. No Wrangler command passes `--keep-vars`. | `catati check` for `--keep-vars`. Where plain vars live needs judgment. |
 | Each Worker lists its secret names in its deploy doc. A secret value never enters a repo, a log or a PR. | judgment |
 | A prod token lives only in GitHub environment `prod` (deploys from `main` only) or `plan-prod` (read-only). Never in a repository secret or a cloud environment. | judgment |
-| Each token reaches one account with the fewest permissions. A Workers token names the Workers it may edit, except where Cloudflare needs product scope: to create a Worker or change a Custom Domain. | judgment |
+| Each token reaches one account. A dev token may have full control of `catati-dev`. A prod token has the fewest permissions, and a Workers token names the Workers it may edit, except where Cloudflare needs product scope: to create a Worker or change a Custom Domain. | judgment |
 
 ## Migrations
 
@@ -91,7 +91,9 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 
 | Rule | Check |
 | --- | --- |
-| An agent changes prod only when the operator asks for that specific prod action. Without that ask, agents do not change prod. | judgment |
+| On dev, agents use the Cloudflare, Shopify and GitHub connectors freely, writes included. Dev has full access on purpose: it is on the free plan, so the worst case is that dev stops working. | judgment |
+| On prod, agents only read. Every prod change is an Ops task: the operator asks for that specific action and approves it in their own words before it runs. | judgment |
+| When it is unclear whether a target is prod, treat it as prod and ask. | judgment |
 | Where this page says the operator runs or merges something, an agent may do it when the operator asks for it. | judgment |
 | A merge of a PR that changes `.github/workflows/` is a prod action, because a workflow change could make a merge apply prod. A merge that changes only a prod Terraform root is not: it plans prod, and `apply-prod` applies it. | judgment |
 
