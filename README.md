@@ -2,12 +2,12 @@
 
 Catati repos fully adopt pstack for development, and everything follows pstack. catati/dev exists to make each repo fully adopt pstack: it supplies what a repo needs for pstack to work there, and adds nothing pstack already handles.
 
-This repo is the Catati dev cloud environment (`catati-dev` on claude.ai/code), as files.
+This repo is the Catati dev cloud environment (`dev` on claude.ai/code), as files.
 Each field of the environment form has one source here. Change the file, not the form.
 
 | Form field | Source |
 |---|---|
-| Name | `catati-dev` |
+| Name | `dev` |
 | Network access | Custom: paste [env/network-allowlist.txt](env/network-allowlist.txt), tick "also allow default package managers" |
 | Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank values in the form. Dev values only: every user of the environment can read them. |
 | Setup script | Paste [env/setup.sh](env/setup.sh) |
@@ -193,5 +193,5 @@ Treat every committed value as public.
 
 ## Not covered
 
-- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be an account API token created in the `catati-dev` account, never in the production "Catati" account.
+- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` is the dev user token `catati-dev/all`. Its Account Resources hold only the `catati-dev` account, never the production "Catati" account. It is a user token because the Workers Builds API rejects account tokens (error 12006).
 - The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet.
