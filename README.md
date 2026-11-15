@@ -119,12 +119,12 @@ catati/dev runs its own standard. `make verify` runs `npm test` and then `catati
 This repo is also a Claude Code plugin marketplace, `.claude-plugin/marketplace.json`, with one plugin, `catati`, in `plugins/catati/`.
 The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo has one.
 
-The operator adds the marketplace at account level on claude.ai. Account plugins sync into sessions started from the app, not into sessions started through the sessions API (#25).
+The operator adds the marketplace at account level on claude.ai, with the `cursor/plugins` marketplace and its `pstack` plugin beside it. catati/dev does not ship pstack. Account plugins sync into sessions started from the app, not into sessions started through the sessions API (#25).
 A synced plugin holds only its own folder, so the skill cannot run the repo's `bin/`. It clones catati/dev into a temp folder and runs `bin/catati.mjs` from there.
 
 | Part | What it does |
 | --- | --- |
-| `/catati:repo-setup` | Clones catati/dev `main` into a temp folder and runs `catati setup` from it in the target repo, removes an old `@catati/dev` pin, adds the `CLAUDE.md` conventions link and the rule table, creates missing status labels, reports how the repo's GitHub settings differ from the conventions, then opens one PR and leaves its body and merge to pstack. A repo already up to date gets no PR. Run it again after each `catati/dev` release. |
+| `/catati:repo-setup` | Clones catati/dev `main` into a temp folder and runs `catati setup` from it in the target repo, removes an old `@catati/dev` pin, adds the `CLAUDE.md` conventions link, drops rule-table rows that only restate a convention, creates missing status labels, reports how the repo's GitHub settings differ from the conventions, then opens one PR and leaves its body and merge to pstack. A repo already up to date gets no PR. Run it again after each `catati/dev` release. |
 | SessionStart hook `session-start.mjs` | Installs a missing `~/.claude/rules/pstack-models.md`, and, where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it, in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the cwd), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
 | WorktreeCreate and WorktreeRemove hook `worktree.mjs` | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. In a repo it adds a locked worktree at `<toplevel>/.claude/worktrees/<name>` on branch `worktree-<name>`, as Claude Code does. In a folder that is no repo, such as `/home/user` in a project thread, it makes `<cwd>/.claude/worktrees/<name>/` with one locked worktree per repo directly below, at the same relative paths. Each worktree starts at its repo's `HEAD`, not `origin/HEAD`, so a subagent sees the root's unpushed work. Each branch records `catatiBase` and gets `pushRemote=no-push`. Remove deletes a clean worktree on its own `worktree-<name>` branch, and that branch when it has no commits beyond `catatiBase`. It keeps, locked, a worktree that is dirty (an untracked nested repo or worktree counts), holds another worktree of its repo, or is on another branch, and exits 1. |
 
@@ -144,7 +144,7 @@ The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `
 
 ## Checks for a new session
 
-Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `corepack --version` and `uv --version`. Check that `~/.claude/rules/pstack-models.md` exists. Then run the install step of the repo in the session.
+Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `corepack --version` and `uv --version`. Check that `~/.claude/rules/pstack-models.md` exists, and that the session lists `/pstack:poteto-mode` and `/catati:repo-setup`. Then run the install step of the repo in the session.
 
 ## Repo contract
 
