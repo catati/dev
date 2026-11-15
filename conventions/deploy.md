@@ -17,7 +17,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 | Workers reach it by | A merge to `main`, through Workers Builds | The operator runs the `deploy-prod` job |
 | Terraform reaches it by | A merge to `main` runs `apply-dev` | The operator runs the `apply-prod` job |
 | Agents may | Plan, apply, deploy, migrate and reset | Read. Write only under the rule in [Who changes prod](#who-changes-prod). |
-| Tokens live in | GitHub environment `dev`, and the `catati-dev` cloud environment | GitHub environments `prod` and `plan-prod` |
+| Tokens live in | GitHub environment `dev`, and the `dev` cloud environment | GitHub environments `prod` and `plan-prod` |
 
 | Rule | Check |
 | --- | --- |

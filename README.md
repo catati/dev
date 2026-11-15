@@ -9,7 +9,7 @@ The repo has four parts:
 | Conventions | [`conventions/`](conventions/) | The rules every Catati repo follows: names, branches, deploys, CI, issues and merges. |
 | `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` finds where a repo breaks the rules. `catati setup` writes the files every repo carries. |
 | `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` skill and the session hooks. |
-| Cloud environment | [`env/`](env/) | The `catati-dev` environment on claude.ai/code, as files. |
+| Cloud environment | [`env/`](env/) | The `dev` environment on claude.ai/code, as files. |
 
 ## Get started
 
@@ -62,7 +62,7 @@ Write the name of the person who allowed the exception. A line with no approver 
 The environment form on claude.ai/code has no API, so each field is a file here. Change the file, not the form.
 
 1. Change the files in `env/` in a PR.
-2. After the merge, paste each changed file into its field of the `catati-dev` form. [Cloud environment](#cloud-environment) maps each field to its file.
+2. After the merge, paste each changed file into its field of the `dev` form. [Cloud environment](#cloud-environment) maps each field to its file.
 3. Start a new cloud session.
 4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Expect Node `v24.15` or later.
 5. Check that `~/.claude/rules/pstack-models.md` exists.
@@ -176,7 +176,7 @@ An allow line turns off one check for a time:
 | Approver | `<name>` is the person who allowed the exception, so each exception traces back to a person. A line with no `approved by <name>` is an `allow` finding, including a line written before the approver was required. |
 | JSON files | A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>"` in `package.json`. |
 | `.catati-allow` | A file that cannot hold a comment or a string, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check. A line there turns off its check for the whole repo. |
-| Expired or malformed | The line is an `allow` finding and turns off nothing. A date that does not exist, such as `2026-02-31`, makes the line malformed. |
+| Expired or malformed | The line is an `allow` finding and turns off nothing. A date that does not exist, such as `2026-02-31`, makes the line malformed. `catati check` reports these lines in every file a check reads, also when the file has no other finding. |
 | Repo checks | A repo's own checks use the same format, such as `catati-allow(commentUse): …`. In any file other than `.catati-allow`, `catati check` skips a line that names a check it does not have, and leaves that line to the repo check that reads it. A misspelled check name in such a file therefore turns off nothing, and `catati check` does not report it. `.catati-allow` holds only `catati check` lines, so an unknown check name there is malformed. |
 
 ### `catati setup`
@@ -251,15 +251,15 @@ A `WorktreeCreate` hook replaces Claude Code's own `git worktree` logic in every
 	node "$(ls -t $(find ~/.claude/plugins -path '*/catati/hooks/worktree.mjs') | head -1)" remove <worktree path>
 	```
 
-Remove refuses any path that is not a `…/worktrees/<name>` folder. It deletes a clean worktree on its own `worktree-<name>` branch, and deletes that branch when it has no commits beyond `catatiBase`. Like `git worktree remove`, it deletes ignored files, such as `.env` or `.dev.vars`, in a worktree it counts as clean. It keeps a worktree locked and exits with 1 when the worktree is dirty, holds another worktree of its repo, or is on another branch. An untracked nested repo or worktree counts as dirty.
+Remove refuses any path that is not a `…/worktrees/<name>` folder. It deletes a clean worktree on its own `worktree-<name>` branch, and deletes that branch when it has no commits beyond `catatiBase`. Like `git worktree remove`, it deletes ignored files, such as `.env` or `.dev.vars`, in a worktree it counts as clean. It keeps a worktree locked and exits with 1 when the worktree is dirty, holds another worktree of its repo, holds a repo or worktree inside an ignored folder, or is on another branch. An untracked nested repo or worktree counts as dirty. It still removes a worktree whose HEAD reflog holds commits on no branch, such as one an amend replaced, and prints their hashes.
 
 ### Cloud environment
 
-Each field of the `catati-dev` environment form has one source file.
+Each field of the `dev` environment form has one source file.
 
 | Form field | Source |
 | --- | --- |
-| Name | `catati-dev` |
+| Name | `dev` |
 | Network access | Custom. Paste [`env/network-allowlist.txt`](env/network-allowlist.txt), and tick "also allow default package managers". |
 | Environment variables | Paste [`env/.env.example`](env/.env.example), then fill the blank values in the form. Use dev values only, because every user of the environment can read them. |
 | Setup script | Paste [`env/setup.sh`](env/setup.sh). |
@@ -282,7 +282,7 @@ Treat every committed value as public.
 | A value that differs per repo | Commit it in that repo, not here. |
 
 > [!WARNING]
-> Keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be an account API token created in the `catati-dev` account, never in the production `Catati` account.
+> Keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` is the dev user token `catati-dev/all`. Its Account Resources hold only the `catati-dev` account, never the production `Catati` account. It is a user token because the Workers Builds API rejects account tokens (error 12006).
 
 ### Repos in the environment
 
