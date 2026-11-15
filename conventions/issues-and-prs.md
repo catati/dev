@@ -33,7 +33,7 @@ The gates a repo provides. pstack decides when to run them.
 
 ## Merges
 
-pstack decides who verifies a PR, when, and who posts the verifier record, as the playbook in use says: [Shipping](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/shipping.md) or [Autopilot-full](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/autopilot-full.md).
+pstack decides who verifies a PR, when, and who posts the verifier record, as the playbook in use says, such as [Shipping](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/shipping.md), [Autopilot-full](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/autopilot-full.md), [Autopilot-stack](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/autopilot-stack.md) or [Orchestrate](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/orchestrate.md).
 
 | Rule | Check |
 | --- | --- |
