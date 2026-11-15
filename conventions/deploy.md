@@ -77,7 +77,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | Plain vars live only in `wrangler.jsonc`, except `COMMIT`. A Worker that reads `COMMIT` gets it from its deploy command as `--var COMMIT:<sha>`. No Wrangler command passes `--keep-vars`. | `catati check` for `--keep-vars`. Where plain vars live needs judgment. |
 | Each Worker lists its secret names in its deploy doc. A secret value never enters a repo, a log or a PR. | judgment |
 | A prod token lives only in GitHub environment `prod` (deploys from `main` only) or `plan-prod` (read-only). Never in a repository secret or a cloud environment. | judgment |
-| Each token reaches one account with the fewest permissions. A Workers token names the Workers it may edit, except where Cloudflare needs product scope: to create a Worker or change a Custom Domain. | judgment |
+| Each token reaches one account. A dev token may have full control of `catati-dev`. A prod token has the fewest permissions, and a Workers token names the Workers it may edit, except where Cloudflare needs product scope: to create a Worker or change a Custom Domain. | judgment |
 
 ## Migrations
 
@@ -91,7 +91,9 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 
 | Rule | Check |
 | --- | --- |
-| An agent changes prod only when the operator asks for that specific prod action. Without that ask, agents do not change prod. | judgment |
+| On dev, agents use any tool or connector freely, writes included. Dev has full access on purpose. It is on the free plan, so the worst case is that dev stops working. | judgment |
+| On prod, agents only read. Every prod change is an Ops task. The operator asks for that specific action and approves it in their own words before it runs. | judgment |
+| When it is unclear whether a target is prod, treat it as prod and ask. | judgment |
 | Where this page says the operator runs or merges something, an agent may do it when the operator asks for it. | judgment |
 | A merge of a PR that changes `.github/workflows/` is a prod action, because a workflow change could make a merge apply prod. A merge that changes only a prod Terraform root is not: it plans prod, and `apply-prod` applies it. | judgment |
 
