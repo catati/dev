@@ -10,7 +10,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 
 | | `dev` | `prod` |
 | --- | --- | --- |
-| Cloudflare account | `catati-dev` | `catati-prod` |
+| Cloudflare account | `catati-dev` | `catati` |
 | Hosts | `<repo>-<component>.catati-dev.workers.dev` | Subdomains of the repo's prod domain, such as `api.cathotel.nz` |
 | Shopify | Store `catati-dev-store`, app `catati-cat-hotel-dev` | Store `3dd4ee` (`catati-nz`), app `catati-cat-hotel` |
 | Data | A copy of active prod data, which may be reset | Customer data, restored with D1 Time Travel |
@@ -51,7 +51,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | GitHub environment `prod` requires the operator's review, so a run waits until the operator approves it in GitHub. That review does not gate Claude while Claude acts as the operator's GitHub account. Until the trial in catati/terraform#16 shows GitHub refusing Claude's approval, only [Who changes prod](#who-changes-prod) stops Claude. | judgment |
 | It builds each Worker once, applies new prod D1 migrations, then runs `wrangler deploy --env prod` for each Worker, the API before the frontends. | judgment |
 | It checks that each prod host answers, and writes the deployed versions and the rollback command to the job summary. | judgment |
-| Its token is a `catati-prod` account token with Workers Admin at product level, D1 Edit, and Zone Workers Routes Edit on each prod zone the Workers use. A repo whose Worker consumes a queue adds Queues Edit. Product level is needed because Cloudflare lets only Workers Admin create a Worker, and Custom Domains have no per-Worker role yet. | judgment |
+| Its token is a `catati` account token with Workers Admin at product level, D1 Edit, and Zone Workers Routes Edit on each prod zone the Workers use. A repo whose Worker consumes a queue adds Queues Edit. Product level is needed because Cloudflare lets only Workers Admin create a Worker, and Custom Domains have no per-Worker role yet. | judgment |
 | No other job deploys Workers in GitHub environment `prod`. Terraform's `apply-prod` also runs there. | judgment |
 | Rollback is in the Cloudflare dashboard, so it works when GitHub is down. It restores code only, not routes, domains, crons or queue consumers. To restore those, run `deploy-prod` on the older commit. | judgment |
 
@@ -103,8 +103,6 @@ Each row names the open issue that tracks its end. A row with no open issue fail
 
 | Name | Rule it breaks | Ends when | Issue |
 | --- | --- | --- | --- |
-| The prod account label `catati` | The prod account is `catati-prod`. | The operator renames the label. | [dev#96](https://github.com/catati/dev/issues/96) |
 | `cat-hotel` frontends' top-level prod config | The top level holds only shared keys. | Each frontend's prod config lives only in `env.prod`. | [cat-hotel#534](https://github.com/catati/cat-hotel/issues/534) |
-| `catati-brand-guide` deploys `main` straight to prod | `deploy-prod` is the only path | `brand-guide` adds `deploy-prod`. | [dev#98](https://github.com/catati/dev/issues/98) |
 | Old `cat-hotel` dev resources in the prod account | The prod account holds prod resources only. | They are deleted. | [cat-hotel#245](https://github.com/catati/cat-hotel/issues/245) |
 | Catsper dev resources in the prod account: D1 `catsper-dev`, R2 `catsper-dev-photos` and Queues `catsper-dev-cat-deletions` and `catsper-dev-home-deletions` | The prod account holds prod resources only. | They are deleted. Dev already runs in `catati-dev`. | [dev#107](https://github.com/catati/dev/issues/107) |
