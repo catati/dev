@@ -9,7 +9,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | The repo name is the stem of every name the repo owns. | Repo `cat-hotel` has the stem `cat-hotel`. | judgment |
 | A resource name is `<repo>-<component>`. | The admin Worker of `cat-hotel` is `cat-hotel-admin`. | `catati check` for `wrangler.jsonc`. Other resources need judgment. |
 | A resource name has no environment suffix. | Dev and prod both use `cat-hotel-admin`, never `cat-hotel-admin-dev`. | `catati check` for `wrangler.jsonc`. Other resources need judgment. |
-| A Cloudflare account is `catati-<env>`. | `catati-dev`, `catati-prod` | judgment |
+| The dev Cloudflare account is `catati-dev`. The prod account is `catati`, because plain `catati` already means prod. | `catati-dev`, `catati` | judgment |
 | Where one namespace holds both environments, a name is `<repo>-<env>`. | Shopify apps `cat-hotel-dev` and `cat-hotel-prod` | judgment |
 | Prod hosts are `<component>.<prod domain>`, with the landing site on the apex. Dev hosts are the `workers.dev` names. | `api.cathotel.nz`, `cathotel.nz` | judgment |
 
