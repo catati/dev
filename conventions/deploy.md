@@ -16,7 +16,7 @@ There are two environments, `dev` and `prod`. Each has its own Cloudflare accoun
 | Data | A copy of active prod data, which may be reset | Customer data, restored with D1 Time Travel |
 | Workers reach it by | A merge to `main`, through Workers Builds | The operator runs the `deploy-prod` job |
 | Terraform reaches it by | A merge to `main` runs `apply-dev` | The operator runs the `apply-prod` job |
-| Agents may | Plan, apply, deploy, migrate and reset. Use the Cloudflare, Shopify and GitHub connectors, writes included. | Read only. Write only under [Who changes prod](#who-changes-prod). |
+| Agents may | Use any tool or connector, writes included | Read only. Write only under [Who changes prod](#who-changes-prod). |
 | Tokens live in | GitHub environment `dev`, and the `dev` cloud environment | GitHub environments `prod` and `plan-prod` |
 
 | Rule | Check |
@@ -91,7 +91,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 
 | Rule | Check |
 | --- | --- |
-| On dev, agents use the Cloudflare, Shopify and GitHub connectors freely, writes included. Dev has full access on purpose: it is on the free plan, so the worst case is that dev stops working. | judgment |
+| On dev, agents use any tool or connector freely, writes included. Dev has full access on purpose: it is on the free plan, so the worst case is that dev stops working. | judgment |
 | On prod, agents only read. Every prod change is an Ops task: the operator asks for that specific action and approves it in their own words before it runs. | judgment |
 | When it is unclear whether a target is prod, treat it as prod and ask. | judgment |
 | Where this page says the operator runs or merges something, an agent may do it when the operator asks for it. | judgment |
