@@ -2,7 +2,7 @@
 
 help:
 	@echo "catati/dev make targets:"
-	@echo "  make install       Install the locked dependencies (npm ci)"
+	@echo "  make install       Install the dependencies (none in this repo)"
 	@echo "  make test          Run the tests (npm test)"
 	@echo "  make e2e           Run the e2e tests (none in this repo)"
 	@echo "  make lint          Run the linters (none in this repo)"
@@ -12,7 +12,7 @@ help:
 	@echo "  make help          List these targets"
 
 install:
-	npm ci
+	@echo "install: no dependencies in this repo"
 
 test:
 	npm test
