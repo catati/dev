@@ -7,8 +7,7 @@ Title formats, status label names and the labels file are in [naming.md](naming.
 | Rule | Check |
 | --- | --- |
 | `CLAUDE.md` links to `catati/dev/conventions/`. | judgment |
-| `CLAUDE.md` keeps a rule table that pairs each rule with what enforces it. | judgment |
-| A rule-table row that restates a convention stays only when it adds something repo-specific: a repo enforcer, a repo name or account, or a stricter local form. A row that adds nothing to the convention goes. | judgment |
+| In the rule table that pstack's [`/correct`](https://github.com/cursor/plugins/blob/main/pstack/skills/correct/SKILL.md#keep-the-rule-table) keeps in `CLAUDE.md`, a row that restates a convention stays only when it adds something repo-specific: a repo enforcer, a repo name or account, or a stricter local form. A row that adds nothing to the convention goes. | judgment |
 | A kept row links the convention section instead of copying its wording. | judgment |
 
 ## Issues
@@ -33,7 +32,7 @@ The gates a repo provides. pstack decides when to run them.
 
 ## Merges
 
-pstack decides who verifies a PR, when, and who posts the verifier record, as the playbook in use says: [Shipping](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/shipping.md) or [Autopilot-full](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/autopilot-full.md).
+pstack decides who verifies a PR, when, and who posts the verifier record, as the playbook in use says, such as [Shipping](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/shipping.md), [Autopilot-full](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/autopilot-full.md), [Autopilot-stack](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/autopilot-stack.md) or [Orchestrate](https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/playbooks/orchestrate.md).
 
 | Rule | Check |
 | --- | --- |
