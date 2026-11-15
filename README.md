@@ -1,41 +1,143 @@
 # catati/dev
 
-Catati repos fully adopt pstack for development, and everything follows pstack. catati/dev exists to make each repo fully adopt pstack: it supplies what a repo needs for pstack to work there, and adds nothing pstack already handles.
+catati/dev holds Catati's engineering standard and the tools that apply it. Every Catati repo builds with [pstack](https://github.com/cursor/plugins/tree/main/pstack). catati/dev supplies what a repo needs for pstack to work there, and adds nothing that pstack already handles.
 
-This repo is the Catati dev cloud environment (`catati-dev` on claude.ai/code), as files.
-Each field of the environment form has one source here. Change the file, not the form.
+The repo has four parts:
 
-| Form field | Source |
-|---|---|
-| Name | `catati-dev` |
-| Network access | Custom: paste [env/network-allowlist.txt](env/network-allowlist.txt), tick "also allow default package managers" |
-| Environment variables | Paste [env/.env.example](env/.env.example), then fill the blank values in the form. Dev values only: every user of the environment can read them. |
-| Setup script | Paste [env/setup.sh](env/setup.sh) |
+| Part | Where | What it is |
+| --- | --- | --- |
+| Conventions | [`conventions/`](conventions/) | The rules every Catati repo follows: names, branches, deploys, CI, issues and merges. |
+| `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` finds where a repo breaks the rules. `catati setup` writes the files every repo carries. |
+| `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` skill and the session hooks. |
+| Cloud environment | [`env/`](env/) | The `catati-dev` environment on claude.ai/code, as files. |
 
-Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and `*.`. When a zone is added there, add it to the list and to `catatiZones` in [test/network-allowlist.test.mjs](test/network-allowlist.test.mjs).
+## Get started
 
-[env/setup.sh](env/setup.sh) writes the pstack model rule to `~/.claude/rules/pstack-models.md` before Claude starts, only when the file is missing, so a session without the plugin still has it. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
+Most people need one of the tasks below. The [Reference](#reference) section lists the full behaviour of each tool.
 
-## Conventions
+### Set a repo up to the standard
 
-`conventions/` holds what a Catati repo gives pstack: names, repo shape, environments, the verify gate and the git hooks. `templates/` holds the files that `catati setup` writes, and `templates/labels.json`, the status labels as an array of `name`, `color` and `description` objects. `catati setup` stays offline and creates no labels from it.
-Each rule names its check. A rule marked `catati check` is checked by each `/catati:repo-setup` run. A rule marked `judgment` needs a reviewer.
+To bring a repo up to the standard, run the setup skill in a cloud session that has the repo:
 
-- [conventions/naming.md](conventions/naming.md) lists the names of repos, resources, versions, make targets, CI checks, files and labels, and the recorded exceptions.
-- [conventions/branches.md](conventions/branches.md) covers branches, the `main` and `check` rulesets, and session start.
-- [conventions/deploy.md](conventions/deploy.md) covers the `dev` and `prod` environments, the deploy pipeline, the `deploy-prod` job, config, secrets and migrations.
-- [conventions/issues-and-prs.md](conventions/issues-and-prs.md) covers `CLAUDE.md`, issues, the verify gates, the verifier record and who merges.
-- [conventions/ci.md](conventions/ci.md) covers the `changes` job that runs only the CI jobs a diff affects, how to gate them, drafts, pushes to `main` and required checks.
-- [conventions/repo-settings.md](conventions/repo-settings.md) lists the GitHub settings a repo keeps: Dependabot, rulesets, the `prod` environment review and the status labels.
-- [conventions/testing.md](conventions/testing.md) maps the unit, integration and e2e layers to make targets, and lists what only production exercises.
+```text
+/catati:repo-setup
+```
 
-## Run `catati check`
+The skill fetches catati/dev `main`, runs `catati setup` in the repo, fixes the `CLAUDE.md` conventions link, creates missing status labels and reports how the repo's GitHub settings differ from the conventions. It then opens one PR. A repo that is already up to date gets no PR, and the skill reports "already up to date".
 
-`catati check` checks the rules marked `catati check` in `conventions/`.
-It checks the whole git repo that holds the current directory, so you can run it from any subdirectory.
-It compares the repo with the `templates/` folder of its own copy of catati/dev, so it needs no network.
-It prints one line per finding, as `<check>: <path>: <problem>`, and exits with 1 if it finds any. Otherwise it exits with 0.
-If it cannot run, for example outside a git repo or on a file it cannot read, it prints one line on stderr and exits with 2.
+Run the skill again after each catati/dev release. Each run converges the repo on the current standard.
+
+### Check a repo without changing it
+
+A repo takes no dependency on catati/dev. The CLI imports only Node built-ins and its own files, so it runs from a fresh clone with no install. From anywhere inside the repo, run:
+
+```sh
+tmp=$(mktemp -d)
+git clone --depth 1 https://github.com/catati/dev "$tmp"
+node "$tmp/bin/catati.mjs" check
+```
+
+Each line names a check, a path and the problem. A repo with only an `install` target prints lines such as:
+
+```text
+templates-equal: .github/ISSUE_TEMPLATE/issue.yml: file is missing
+make-targets: Makefile: no target test
+ci-workflow: .github/workflows/ci.yml: file is missing
+```
+
+The command exits with 0 when it finds nothing. To see what `catati setup` would change, run `node "$tmp/bin/catati.mjs" setup --dry-run`.
+
+### Accept a finding for a time
+
+To turn off a check for one file until a date, add an allow line to that file:
+
+```text
+# catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>
+```
+
+Write the name of the person who allowed the exception. A line with no approver is itself a finding. For JSON files, files that cannot hold a comment and the full rules, see [Allow lines](#allow-lines).
+
+### Change the cloud environment
+
+The environment form on claude.ai/code has no API, so each field is a file here. Change the file, not the form.
+
+1. Change the files in `env/` in a PR.
+2. After the merge, paste each changed file into its field of the `catati-dev` form. [Cloud environment](#cloud-environment) maps each field to its file.
+3. Start a new cloud session.
+4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Expect Node `v24.15` or later.
+5. Check that `~/.claude/rules/pstack-models.md` exists.
+6. Check that the session lists `/pstack:poteto-mode` and `/catati:repo-setup`.
+7. Run the install step of the repo in the session. [Repos in the environment](#repos-in-the-environment) names each install step.
+
+### Release a change to catati/dev
+
+1. Make the change in a PR.
+2. If the PR changes the plugin, raise `version` in both `package.json` and `plugins/catati/.claude-plugin/plugin.json`. Synced sessions pick up a plugin change only when its version changes, and `npm test` fails when the two versions differ.
+3. Run `make verify`. It runs `npm test`, then `catati check` on catati/dev itself. CI's `verify` job runs the same target on every PR and on each push to `main`.
+
+## How catati/dev works with pstack
+
+pstack decides how work gets done: how an agent plans, builds, verifies, opens a PR and merges. catati/dev decides what a Catati repo looks like, so that pstack's steps work the same way in every repo. That means names, the `make verify` gate, the git hooks, the deploy paths and who may change prod.
+
+When pstack covers something, catati/dev adds no rule, template or check for it. PR titles and bodies follow pstack's Opening a PR playbook, for example, so catati/dev ships no PR template. The verifier record and the merge rules in [`conventions/issues-and-prs.md`](conventions/issues-and-prs.md#merges) add only what pstack leaves open: the record's format, and which merges are the operator's.
+
+### Each rule names what enforces it
+
+Every convention row ends with its check. `catati check` means each `/catati:repo-setup` run checks the rule. `judgment` means a reviewer checks it, because no tool does yet. A test file, such as `test/worktree.test.mjs`, means that test proves the rule.
+
+Only catati/dev runs `catati check` in its own CI. Other repos run it through `/catati:repo-setup`, so they never pin a copy of catati/dev.
+
+### Session hooks live in the plugin
+
+Claude Code loads a repo's `.claude/settings.json` only when a session starts in that repo ([settings files](https://code.claude.com/docs/en/settings#settings-files)). A project thread that starts one folder up never runs those settings. Plugin hooks load in every session that syncs the plugin ([hooks](https://code.claude.com/docs/en/hooks)). So the hooks that every session needs live in the `catati` plugin, not in each repo.
+
+The plugin has no prod guard hook. The control on prod is the rule in [Who changes prod](conventions/deploy.md#who-changes-prod). An agent changes prod only when the operator asks for that specific prod action.
+
+### Repo contract
+
+The cloud environment provides only runtimes and the OS libraries that need root. These are Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium.
+
+Each repo declares every other tool it needs. Its own install step then sets the tool up the same way on a Mac, in CI and in the cloud.
+
+| Tool | Where the repo declares it |
+| --- | --- |
+| npm CLIs, such as `wrangler`, `@shopify/cli` and Playwright | `devDependencies`, pinned in the lockfile. |
+| The pnpm version | The `packageManager` field. |
+| The Python version and packages | `requires-python` and the dependencies in `pyproject.toml`, run through `uv`. |
+| Native binaries, such as `shfmt`, `shellcheck` and `gitleaks` | An install target that downloads a pinned version and checks its SHA-256. |
+| Playwright browsers | `playwright install chromium` in the install step. |
+
+Do not add a repo tool to [`env/setup.sh`](env/setup.sh). Fix the repo instead. The one step in `env/setup.sh` that installs no runtime writes the pstack model rule. The rule belongs to the user, not to a repo, and the setup script is the only step that runs in every session.
+
+## Reference
+
+### Conventions
+
+| File | What it covers |
+| --- | --- |
+| [`naming.md`](conventions/naming.md) | Names of repos, resources, versions, make targets, CI checks, files and labels, and the recorded exceptions. |
+| [`branches.md`](conventions/branches.md) | Branches, the `main` and `check` rulesets, and session start. |
+| [`deploy.md`](conventions/deploy.md) | The `dev` and `prod` environments, the deploy pipeline, the `deploy-prod` and `apply-prod` jobs, config, secrets and migrations. |
+| [`issues-and-prs.md`](conventions/issues-and-prs.md) | `CLAUDE.md`, issues, the verify gates, the verifier record, one-way-door paths and who merges. |
+| [`ci.md`](conventions/ci.md) | The `changes` job that runs only the CI jobs a diff affects, job gates, drafts, pushes to `main` and required checks. |
+| [`repo-settings.md`](conventions/repo-settings.md) | The GitHub settings a repo keeps: Dependabot, rulesets, the `prod` environment review and the status labels. |
+| [`testing.md`](conventions/testing.md) | The unit, integration and e2e layers, their make targets, and what only production exercises. |
+
+[`templates/`](templates/) holds the files that `catati setup` copies. `templates/labels.json` holds the four status labels as an array of `name`, `color` and `description` objects. `catati setup` creates no labels from it. `/catati:repo-setup` does.
+
+### `catati check`
+
+```text
+node bin/catati.mjs check
+```
+
+`catati check` checks the rules marked `catati check` in `conventions/`. It reads the whole git repo that holds the current directory, so it works from any subdirectory. It compares the repo with the `templates/` folder of its own copy of catati/dev, so it needs no network.
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | No findings. |
+| `1` | One or more findings, one per line on stdout, as `<check>: <path>: <problem>`. |
+| `2` | The check could not run, for example outside a git repo or on a file it cannot read. One line on stderr says why. |
 
 | Check | Fails when |
 | --- | --- |
@@ -44,153 +146,157 @@ If it cannot run, for example outside a git repo or on a file it cannot read, it
 | `version-source` | A repo with a `wrangler.jsonc` outside `node_modules/` has no root `package.json`, or its `version` is not `MAJOR.MINOR.PATCH`, such as `2.0.0` (no `v`, no leading zero, no pre-release). Or another `package.json` outside `node_modules/` declares a `version`. The root holds the one version the repo ships. A repo with no `wrangler.jsonc` skips this check. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
 | `workflow-names` | A `.yml` or `.yaml` file in `.github/workflows/` is not `ci.yml` or `deploy.yml`. Other files there, such as a `README.md`, are not workflows, and no check reads them. |
-| `env-names` | A `wrangler.jsonc` has an `env` key other than `dev` or `prod`, a workflow's `environment` is not `dev` or `prod` and does not end in `-dev` or `-prod` (a matrix list is skipped), or an environment word (`production`, `development`, `staging` or `preview`, in any case) names a config file or a Terraform root outside `node_modules/`. A config file is `<base>.<word>.<toml|json|jsonc|yaml|yml>`, such as `shopify.app.production.toml`, `.env.<word>` or `.dev.vars.<word>`. A Terraform root is a folder named `<word>` that directly holds a `.tf` file. Other paths, such as `link-preview.vue` or `production-plans.json`, pass. |
+| `env-names` | A `wrangler.jsonc` has an `env` key other than `dev` or `prod`. Or a workflow's `environment` is not `dev` or `prod` and does not end in `-dev` or `-prod`. A matrix list is skipped. Or an environment word (`production`, `development`, `staging` or `preview`, in any case) names a config file or a Terraform root outside `node_modules/`. A config file is `<base>.<word>.<toml\|json\|jsonc\|yaml\|yml>`, such as `shopify.app.production.toml`, or `.env.<word>`, or `.dev.vars.<word>`. A Terraform root is a folder named `<word>` that directly holds a `.tf` file. Other paths, such as `link-preview.vue` or `production-plans.json`, pass. |
 | `secret-names` | A workflow reads `secrets.<NAME>` where a `_` token of the name is `DEV`, `PROD`, `PRODUCTION`, `DEVELOPMENT`, `STAGING` or `CATATI`. |
-| `wrangler-envs` | A `wrangler.jsonc` lacks `env.dev` or `env.prod`, each with a string `name` and `account_id`. Or a command in a `package.json` script, a `Makefile` or the `deploy_command` and `build_command` of a `builds.json` runs a remote Wrangler command (`deploy`, `versions`, `d1 migrations apply`, `d1 execute --remote`, `secret`, `triggers`, `rollback`) without `--env` or `-e`. A command with an argument that is only a variable the check cannot expand, such as `$$ENV_ARGS`, is skipped, because that variable may hold `--env`. A variable given as the value of a Wrangler flag, such as `--name ${X}`, does not skip the command. Any command that passes `--keep-vars` is also a finding. In a `Makefile` it reads only recipe lines, never comments, and skips `echo` and `printf` commands. It expands `$(NAME)` and `${NAME}` from `=`, `:=`, `?=` and `+=` variable lines, and reads commands inside `(` and `)`. It splits commands at `&&`, `\|\|`, `;` and `\|` without reading quotes, so a separator inside a quoted string splits there too. |
+| `wrangler-envs` | A `wrangler.jsonc` lacks `env.dev` or `env.prod`, each with a string `name` and `account_id`. Or a command runs a remote Wrangler command without `--env` or `-e`. See [How `wrangler-envs` reads commands](#how-wrangler-envs-reads-commands). Any command that passes `--keep-vars` is also a finding. |
 | `resource-names` | A resource name in a `wrangler.jsonc`, at the top level or in an `env.<name>`, is not `<repo>` or `<repo>-<component>`, or ends in `-dev`, `-prod`, `-production`, `-development` or `-staging`. `<repo>` is the last part of the `origin` remote URL, without `.git`. A repo with no `origin` remote skips this check. Resource names are `name`, `d1_databases[].database_name`, `r2_buckets[].bucket_name`, `queues.producers[].queue`, `queues.consumers[].queue` and `dead_letter_queue`, and `workflows[].name`. No other key is read, so `vars`, `ratelimits`, `send_email` and `durable_objects` bindings pass. |
 | `env-example` | An env template, such as `example.env` or `.env.sample`, is not named `.env.example`. Real env files, such as `.env` and `.prod.env`, are not templates. |
+| `allow` | An allow line is expired or malformed, or names no approver. See [Allow lines](#allow-lines). |
 
-A repo takes no dependency on catati/dev. The CLI imports only Node built-ins and its own files, so it runs from a clone with no install:
+#### How `wrangler-envs` reads commands
 
-```sh
-tmp=$(mktemp -d)
-git clone --depth 1 https://github.com/catati/dev "$tmp"
-node "$tmp/bin/catati.mjs" check
-```
+The check reads the commands in `package.json` scripts, in a `Makefile`, and in the `deploy_command` and `build_command` of a `builds.json`. A remote Wrangler command is `deploy`, `versions`, `d1 migrations apply`, `d1 execute --remote`, `secret`, `triggers` or `rollback`.
 
-Each `/catati:repo-setup` run does this through `catati setup`, which prints the same findings. Only catati/dev runs `catati check` in its own CI.
+- A command with an argument that is only a variable the check cannot expand, such as `$$ENV_ARGS`, is skipped, because that variable may hold `--env`.
+- A variable given as the value of a Wrangler flag, such as `--name ${X}`, does not skip the command.
+- In a `Makefile`, the check reads only recipe lines, never comments, and skips `echo` and `printf` commands. It expands `$(NAME)` and `${NAME}` from `=`, `:=`, `?=` and `+=` variable lines, and reads commands inside `(` and `)`.
+- The check splits commands at `&&`, `||`, `;` and `|` without reading quotes. A separator inside a quoted string therefore splits the command there too.
 
-To accept a finding for a time, add this line to the file that has the finding:
+### Allow lines
+
+An allow line turns off one check for a time:
 
 ```text
 # catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>
 ```
 
-`<name>` is the person who allowed the exception, so each one traces back to a person.
+| Rule | Detail |
+| --- | --- |
+| Scope | The line turns off its check for every finding in the file that holds it, until the end of the date. It covers the whole file, because some findings have no line of their own, such as a missing `Makefile` target. |
+| Approver | `<name>` is the person who allowed the exception, so each exception traces back to a person. A line with no `approved by <name>` is an `allow` finding, including a line written before the approver was required. |
+| JSON files | A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>"` in `package.json`. |
+| `.catati-allow` | A file that cannot hold a comment or a string, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check. A line there turns off its check for the whole repo. |
+| Expired or malformed | The line is an `allow` finding and turns off nothing. A date that does not exist, such as `2026-02-31`, makes the line malformed. |
+| Repo checks | A repo's own checks use the same format, such as `catati-allow(commentUse): …`. In any file other than `.catati-allow`, `catati check` skips a line that names a check it does not have, and leaves that line to the repo check that reads it. A misspelled check name in such a file therefore turns off nothing, and `catati check` does not report it. `.catati-allow` holds only `catati check` lines, so an unknown check name there is malformed. |
 
-The line turns off that check for every finding in the file that holds it, until the end of the date.
-It covers the whole file, not one line, because some findings have no line of their own. A missing `Makefile` target is an example.
+### `catati setup`
 
-A JSON file holds the line as a string value, such as `"//": "catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>"` in `package.json`.
+```text
+node bin/catati.mjs setup [--dry-run]
+```
 
-A file that cannot hold a comment or a string, such as a template or a missing file, takes its line in `.catati-allow` at the repo root, one line per check.
-A line in `.catati-allow` turns off its check for the whole repo.
-
-An expired or malformed allow line is a finding with the check `allow`, and it turns off nothing.
-A date that does not exist, such as `2026-02-31`, makes the line malformed.
-A line with no `approved by <name>` is a finding too, such as one written before the approver was required.
-
-A repo's own checks use the same format, such as `catati-allow(commentUse): <reason>; expires YYYY-MM-DD; approved by <name>`. In any file other than `.catati-allow`, `catati check` skips a line that names a check it does not have, and leaves that line to the repo check that reads it. So a misspelled check name in such a file turns off nothing and is not reported. `.catati-allow` holds only `catati check` lines, so an unknown check name there is malformed.
-
-To test the package, run `npm test`.
-The `verify` check in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs `npm test` on every PR and on each push to `main`.
-
-## Run `catati setup` to set a repo up to the standard
-
-`catati setup` writes the files every Catati repo carries, in the git repo that holds the current directory.
-Run it again at any time to bring the repo up to date. A run on a repo that is already up to date changes nothing.
+`catati setup` writes the files every Catati repo carries, in the git repo that holds the current directory. A run on a repo that is already up to date changes nothing.
 
 | File | What `setup` does |
 | --- | --- |
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
-| `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/`, and sets the exec bit. |
+| `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/` and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
+| `.github/pull_request_template.md`, `.github/workflows/pr-format.yml` | Deletes each one, because catati/dev no longer manages them. |
 
-It prints one line per file, as `created <path>`, `updated <path>` or `unchanged <path>`.
-It also deletes each file it used to manage and no longer does, `.github/pull_request_template.md` and `.github/workflows/pr-format.yml`, and prints `removed <path>` for each one it finds. A second run finds none and prints nothing for them. It skips such a path when it is not a regular file or sits under a symlinked directory.
-A copy replaces the whole file when one byte differs, and keeps the file's mode.
-It prints `skipped <path>: <reason>` and leaves the file as is when it skips a managed path that is not a regular file, such as a symlink.
-It skips a managed path whose parent directory, such as `.github`, is a symlink. If the link leads out of the repo, the line reads `skipped <path>: resolves outside the repo`.
-A link that stays in the repo is skipped too. Git commits the link, not the files behind it, so the files would land at a path the standard does not name.
+A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](conventions/issues-and-prs.md#one-way-door-paths).
 
-After the files, it prints the findings of `catati check`, such as a missing `e2e` target. Those are the changes `setup` does not make.
-With `--dry-run`, it prints the same lines and writes nothing. The findings then show what would be left after a real run.
-It exits with 0, also when it prints findings. If it cannot run, for example outside a git repo, it prints one line on stderr and exits with 2.
-If it skipped a file, its last line goes to stderr, as `catati: setup skipped <n> file(s); the standard is not fully applied`, and it still exits with 0.
-A caller such as a skill reads stderr to learn that the repo needs a person to look at the skipped files.
+`setup` prints one line per file, then the findings of `catati check`. Those findings are the changes `setup` does not make.
 
-`setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases.
-It neither writes nor removes a repo's `.github/CODEOWNERS`. No ruleset asks for code-owner review, so the file enforces nothing, and the operator already merges those paths as [one-way doors](conventions/issues-and-prs.md#one-way-door-paths).
+| Line | Meaning |
+| --- | --- |
+| `created <path>`, `updated <path>`, `unchanged <path>` | What `setup` did with a managed file. |
+| `removed <path>` | `setup` deleted a file it no longer manages. A second run finds none and prints nothing for them. |
+| `skipped <path>: <reason>` | `setup` left a managed path as is, because the path is not a regular file, such as a symlink, or its parent directory, such as `.github`, is a symlink. A link that leads out of the repo reads `skipped <path>: resolves outside the repo`. A link inside the repo is skipped too, because Git commits the link, not the files behind it. A file it would delete is skipped on the same terms. |
+| `<check>: <path>: <problem>` | A `catati check` finding that is left after the run. |
 
-catati/dev runs its own standard. `make verify` runs `npm test` and then `catati check` on catati/dev, and CI's `verify` job runs `make verify`.
+| Exit code | Meaning |
+| --- | --- |
+| `0` | `setup` ran, with or without findings. If it skipped a file, its last line goes to stderr as `catati: setup skipped <n> file(s); the standard is not fully applied`. A caller, such as a skill, reads stderr to learn that a person must look at the skipped files. |
+| `2` | `setup` could not run, for example outside a git repo. One line on stderr says why. |
 
-## Use the `catati` plugin
+With `--dry-run`, `setup` prints the same lines and writes nothing. The findings then show what a real run would leave.
 
-This repo is also a Claude Code plugin marketplace, `.claude-plugin/marketplace.json`, with one plugin, `catati`, in `plugins/catati/`.
-The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo has one.
+### `catati` plugin
 
-The operator adds the marketplace at account level on claude.ai, with the `cursor/plugins` marketplace and its `pstack` plugin beside it. catati/dev does not ship pstack. Account plugins sync into sessions started from the app, not into sessions started through the sessions API (#25).
-A synced plugin holds only its own folder, so the skill cannot run the repo's `bin/`. It clones catati/dev into a temp folder and runs `bin/catati.mjs` from there.
+This repo is a Claude Code plugin marketplace, [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json), with one plugin, `catati`, in `plugins/catati/`. The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo has one.
+
+The operator adds this marketplace at account level on claude.ai, beside the `cursor/plugins` marketplace and its `pstack` plugin. catati/dev does not ship pstack. Account plugins sync into sessions started from the app, not into sessions started through the sessions API ([#25](https://github.com/catati/dev/issues/25)).
+
+A synced plugin holds only its own folder, so the skill cannot run the repo's `bin/`. The skill clones catati/dev into a temp folder and runs `bin/catati.mjs` from there.
 
 | Part | What it does |
 | --- | --- |
-| `/catati:repo-setup` | Clones catati/dev `main` into a temp folder and runs `catati setup` from it in the target repo, removes an old `@catati/dev` pin, adds the `CLAUDE.md` conventions link, drops rule-table rows that only restate a convention, creates missing status labels, reports how the repo's GitHub settings differ from the conventions, then opens one PR and leaves its body and merge to pstack. A repo already up to date gets no PR. Run it again after each `catati/dev` release. |
-| SessionStart hook `session-start.mjs` | Installs a missing `~/.claude/rules/pstack-models.md`, and, where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it, in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the cwd), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
-| WorktreeCreate and WorktreeRemove hook `worktree.mjs` | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. In a repo it adds a locked worktree at `<toplevel>/.claude/worktrees/<name>` on branch `worktree-<name>`, as Claude Code does. In a folder that is no repo, such as `/home/user` in a project thread, it makes `<cwd>/.claude/worktrees/<name>/` with one locked worktree per repo directly below, at the same relative paths. Each worktree starts at its repo's `HEAD`, not `origin/HEAD`, so a subagent sees the root's unpushed work. Each branch records `catatiBase` and gets `pushRemote=no-push`. Remove deletes a clean worktree on its own `worktree-<name>` branch, and that branch when it has no commits beyond `catatiBase`. It keeps, locked, a worktree that is dirty (an untracked nested repo or worktree counts), holds another worktree of its repo, or is on another branch, and exits 1. |
+| [`/catati:repo-setup`](plugins/catati/skills/repo-setup/SKILL.md) | Clones catati/dev `main` and runs `catati setup` from it in the target repo. Removes an old `@catati/dev` pin. Adds the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
+| SessionStart hook [`session-start.mjs`](plugins/catati/hooks/session-start.mjs) | Installs `~/.claude/rules/pstack-models.md` when it is missing. Where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it. It acts in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the current directory), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
+| WorktreeCreate and WorktreeRemove hook [`worktree.mjs`](plugins/catati/hooks/worktree.mjs) | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. See [Worktree subagents](#worktree-subagents). |
 
-A `WorktreeCreate` hook replaces Claude Code's own `git worktree` logic in every session, local ones included, and Claude Code then skips `.worktreeinclude`. Claude Code does not call `WorktreeRemove` when a subagent ends, because it cannot tell whether a hook-made worktree holds changes. So the root cleans up: merge each subagent's branch with `git -C <repo> merge --ff-only worktree-<name>` (or cherry-pick when two ran in parallel), then run `node "$(ls -t $(find ~/.claude/plugins -path '*/catati/hooks/worktree.mjs') | head -1)" remove <worktree path>`. Remove refuses any path that is not a `…/worktrees/<name>` folder. Like `git worktree remove`, it deletes ignored files (such as `.env` or `.dev.vars`) in a worktree it counts as clean. Subagents commit and never push; only the root pushes. A worktree has no `node_modules`, so a subagent that runs tests runs `make install` first. `pushRemote=no-push` stops a bare `git push` only, not `git push origin <ref>`.
+The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `version` in `package.json`.
 
-Repo `.claude/settings.json` files load only when a session starts in that repo, so a project thread that starts one folder up never runs them ([settings](https://code.claude.com/docs/en/settings#settings-files)). Plugin hooks load in every session that syncs the plugin ([hooks](https://code.claude.com/docs/en/hooks)). That is why the session hooks live here, not in each repo.
+#### Worktree subagents
 
-The plugin has no prod guard hook. The control on prod is the rule in [Who changes prod](conventions/deploy.md#who-changes-prod): an agent changes prod only when the operator asks for that specific prod action.
+In a repo, the hook adds a locked worktree at `<toplevel>/.claude/worktrees/<name>` on branch `worktree-<name>`, as Claude Code does. In a folder that is not a repo, such as `/home/user` in a project thread, it makes `<cwd>/.claude/worktrees/<name>/` with one locked worktree per repo directly below, at the same relative paths.
 
-The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `package.json` version, and `npm test` fails when they differ. Bump both in the PR that changes the plugin, so synced sessions pick up the change.
+- Each worktree starts at its repo's `HEAD`, not `origin/HEAD`, so a subagent sees the root's unpushed work.
+- Each branch records `catatiBase` and gets `pushRemote=no-push`. That setting stops a bare `git push` only, not `git push origin <ref>`.
+- A worktree has no `node_modules`, so a subagent that runs tests runs `make install` first.
+- Subagents commit and never push. Only the root pushes.
 
-## Change process
+A `WorktreeCreate` hook replaces Claude Code's own `git worktree` logic in every session, local ones included. Claude Code then skips `.worktreeinclude`. Claude Code also does not call `WorktreeRemove` when a subagent ends, because it cannot tell whether a hook-made worktree holds changes. So the root cleans up after each subagent:
 
-1. Change the files here in a PR.
-2. After merge, paste each changed file into its field on claude.ai/code. The form has no API, so this step is manual.
-3. Start a new cloud session and run the checks below.
+1. Merge the subagent's branch. When two subagents ran in parallel, cherry-pick instead.
 
-## Checks for a new session
+	```sh
+	git -C <repo> merge --ff-only worktree-<name>
+	```
 
-Ask Claude to run `check-tools`, `node -v` (expect `v24.15` or later), `corepack --version` and `uv --version`. Check that `~/.claude/rules/pstack-models.md` exists, and that the session lists `/pstack:poteto-mode` and `/catati:repo-setup`. Then run the install step of the repo in the session.
+2. Remove the worktree:
 
-## Repo contract
+	```sh
+	node "$(ls -t $(find ~/.claude/plugins -path '*/catati/hooks/worktree.mjs') | head -1)" remove <worktree path>
+	```
 
-The environment provides runtimes and root-only OS libraries: Node 24 (24.15 or later), corepack, uv, and Playwright's Chromium system libraries.
-Each repo declares every other tool it needs, so its own install step sets it up the same way on a Mac, in CI and in the cloud:
+Remove refuses any path that is not a `…/worktrees/<name>` folder. It deletes a clean worktree on its own `worktree-<name>` branch, and deletes that branch when it has no commits beyond `catatiBase`. Like `git worktree remove`, it deletes ignored files, such as `.env` or `.dev.vars`, in a worktree it counts as clean. It keeps a worktree locked and exits with 1 when the worktree is dirty, holds another worktree of its repo, or is on another branch. An untracked nested repo or worktree counts as dirty.
 
-- npm CLIs (`wrangler`, `@shopify/cli`, Playwright): `devDependencies`, pinned in the lockfile.
-- pnpm version: the `packageManager` field.
-- Python version and packages: `requires-python` and dependencies in `pyproject.toml`, run through `uv`.
-- Native binaries (`shfmt`, `shellcheck`, `gitleaks`): an install target that downloads a pinned version and checks its SHA-256.
-- Playwright browsers: `playwright install chromium` in the install step.
+### Cloud environment
 
-Do not add a repo tool to [env/setup.sh](env/setup.sh). Fix the repo instead.
-The one non-runtime step in `env/setup.sh` is the pstack model rule. The rule belongs to the user, not to a repo, and the setup script is the only step that runs in every session.
+Each field of the `catati-dev` environment form has one source file.
 
-## GitHub access
+| Form field | Source |
+| --- | --- |
+| Name | `catati-dev` |
+| Network access | Custom. Paste [`env/network-allowlist.txt`](env/network-allowlist.txt), and tick "also allow default package managers". |
+| Environment variables | Paste [`env/.env.example`](env/.env.example), then fill the blank values in the form. Use dev values only, because every user of the environment can read them. |
+| Setup script | Paste [`env/setup.sh`](env/setup.sh). |
 
-Install the Claude GitHub App on the `catati` org. Every repo below lives there.
+**Network allowlist.** Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and as `*.`. When a zone is added there, add it to the list and to `catatiZones` in [`test/network-allowlist.test.mjs`](test/network-allowlist.test.mjs).
 
-## What each repo gets
+**Setup script.** `env/setup.sh` installs Node 24, enables corepack, checks that uv is present and installs the Playwright system libraries. Before Claude starts, it also writes the pstack model rule to `~/.claude/rules/pstack-models.md` when that file is missing, so a session without the plugin still has the rule. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
+
+**GitHub access.** Install the Claude GitHub App on the `catati` organization. Every repo in the next section lives there.
+
+#### Rules for `env/.env.example`
+
+Treat every committed value as public.
+
+| Kind of value | Where it goes |
+| --- | --- |
+| A value that is not secret | Commit it in `env/.env.example`. |
+| A secret | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
+| A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL` and `SHOPIFY_SHOP` | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
+| A value that differs per repo | Commit it in that repo, not here. |
+
+> [!WARNING]
+> Keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be an account API token created in the `catati-dev` account, never in the production `Catati` account.
+
+### Repos in the environment
 
 Cloudflare is the only serverless provider. Firebase is being removed, so this environment does not provide it.
 
 | Repo | Install in a session | Gap against the repo contract | Notes |
-|---|---|---|---|
-| `catsper` | `make install` | None. `make install` already runs `playwright install chromium`. | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. |
+| --- | --- | --- | --- |
+| `catsper` | `make install` | None. `make install` already runs `playwright install chromium`. | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet. |
 | `cat-hotel` | `make install` | None. `@shopify/cli` is a root devDependency (catati/cat-hotel#255), and `make install` runs `pnpm install` and `playwright install chromium` (catati/cat-hotel#223). | `wrangler` is already a devDependency. `shopify app deploy --config dev` needs `SHOPIFY_SERVICE_ACCOUNT_TOKEN`. |
-| `agents` | `make tools-install` | None. `make tools-install` installs the pinned `shfmt` and `shellcheck` (catati/agents#570, on `main` via #572). | Python comes from `requires-python` in `tools/product-labels/pyproject.toml`. `make gmail-auth` and `mcp-deploy ENV=prod` are Mac-only. |
-| `catati-horizon` | `npm ci` | Fixed on `dev` only (catati/catati-horizon#60): declares `@shopify/cli`, drops `jq`, installs Playwright Chromium. Open until it reaches `main`, the default branch that cloud sessions clone. | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
-| `branding` | `npm ci`; Python scripts through `uv run` | None. `package.json` pins `wrangler`; `pyproject.toml` declares `fonttools` and `brotli` (catati/branding#5). | |
+| `agents` | `make tools-install` | None. `make tools-install` installs the pinned `shfmt` and `shellcheck` (catati/agents#570, on `main` through catati/agents#572). | Python comes from `requires-python` in `tools/product-labels/pyproject.toml`. `make gmail-auth` and `mcp-deploy ENV=prod` run only on a Mac. |
+| `catati-horizon` | `npm ci` | Fixed on `dev` only (catati/catati-horizon#60). The fix declares `@shopify/cli`, drops `jq` and installs Playwright Chromium. The gap stays open until the fix reaches `main`, the default branch that cloud sessions clone. | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
+| `branding` | `npm ci`, and Python scripts through `uv run` | None. `package.json` pins `wrangler`, and `pyproject.toml` declares `fonttools` and `brotli` (catati/branding#5). | |
 | `knowledge` | `make install` | None. `make install` runs `gitleaks-install` (catati/knowledge#13). | |
 
-Paste the current [env/setup.sh](env/setup.sh) into the environment form after each merge that changes it. A row with an open gap means that repo's sessions lack the tool until the repo's fix reaches `main`. Set a row's gap to "None" when that fix reaches `main`.
+A row with an open gap means that the repo's sessions lack the tool until the repo's fix reaches `main`. When the fix reaches `main`, set the row's gap to "None".
 
-Not reachable from the cloud: `hermes` and `catati-video` (not on GitHub), and `ads`, `products`, `catati-products` (no Git remote).
-
-## Rules for env/.env.example
-
-Treat every committed value as public.
-
-- Non-secret value: commit it in [env/.env.example](env/.env.example).
-- Secret value: keep the name with a blank value here; fill the value only in the form.
-- A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL` and `SHOPIFY_SHOP`: keep the name with a blank value here; fill the value only in the form.
-- A value that differs per repo does not belong here: commit it in that repo.
-
-## Not covered
-
-- Production deploys: keep production credentials out of this shared environment. `CLOUDFLARE_API_TOKEN` must be an account API token created in the `catati-dev` account, never in the production "Catati" account.
-- The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet.
+These repos are not reachable from the cloud. `hermes` and `catati-video` are not on GitHub. `ads`, `products` and `catati-products` have no Git remote.
