@@ -65,7 +65,9 @@ function withRepoLock(repo, work) {
 				try {
 					const now = statSync(lock);
 					if (now.ino === seen.ino && now.mtimeMs === seen.mtimeMs && now.birthtimeMs === seen.birthtimeMs) renameSync(lock, stale);
-				} catch {}
+				} catch (error) {
+					if (error.code !== 'ENOENT') throw new Error(`cannot clear stale ${lock}: ${error.message}`);
+				}
 				rmSync(stale, { recursive: true, force: true });
 				continue;
 			}
@@ -120,7 +122,8 @@ function addWorktreeLocked(repo, path, name) {
 
 function dropWorktree({ repo, path, branch }) {
 	tryGit(['worktree', 'unlock', path], repo);
-	tryGit(['worktree', 'remove', path], repo);
+	// Force only on the branch this create made, so a worktree someone else put at the path survives.
+	if (tryGit(['symbolic-ref', '--quiet', 'HEAD'], path) === `refs/heads/${branch}`) tryGit(['worktree', 'remove', '--force', path], repo);
 	tryGit(['branch', '-D', branch], repo);
 }
 
@@ -168,10 +171,27 @@ function nestedWorktrees(repo, path) {
 		.filter((other) => prefixes.some((prefix) => other.startsWith(prefix)));
 }
 
+function holdsGit(dir) {
+	return readdirSync(dir, { withFileTypes: true }).some((entry) => entry.name === '.git' || (entry.isDirectory() && holdsGit(join(dir, entry.name))));
+}
+
+function ignoredRepos(path) {
+	return git(['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], path)
+		.split('\0')
+		.filter((entry) => entry.endsWith('/') && holdsGit(join(path, entry)));
+}
+
+function reflogOnly(path) {
+	const reflog = git(['log', '--walk-reflogs', '--format=%H', 'HEAD'], path).split('\n').filter(Boolean);
+	if (reflog.length === 0) return [];
+	return git(['rev-list', ...new Set(reflog), '--not', '--all'], path).split('\n').filter(Boolean);
+}
+
 function removeOne(path, branch) {
 	if (!existsSync(path)) return null;
 	const repo = commonDir(path);
 	return withRepoLock(repo, () => {
+		if (!existsSync(path)) return null;
 		const current = tryGit(['symbolic-ref', '--quiet', '--short', 'HEAD'], path);
 		if (current !== branch) return `${path}: kept, it is on ${current ?? 'a detached HEAD'}, not ${branch}`;
 		const base = tryGit(['config', '--get', `branch.${branch}.catatiBase`], path);
@@ -179,6 +199,9 @@ function removeOne(path, branch) {
 		const nested = nestedWorktrees(repo, path);
 		if (nested.length > 0) return `${path}: kept locked, it holds worktree ${nested.join(', ')}`;
 		if (git(['status', '--porcelain', '--untracked-files=all'], path) !== '') return `${path}: kept locked, it has uncommitted changes`;
+		const ignored = ignoredRepos(path);
+		if (ignored.length > 0) return `${path}: kept locked, it holds a repo in ignored ${ignored.join(', ')}`;
+		const lost = reflogOnly(path);
 		tryGit(['worktree', 'unlock', path], repo);
 		try {
 			git(['worktree', 'remove', path], repo);
@@ -186,6 +209,7 @@ function removeOne(path, branch) {
 			tryGit(['worktree', 'lock', path], repo);
 			throw error;
 		}
+		if (lost.length > 0) console.error(`catati: removed ${path}; ${lost.length} commit(s) only in its HEAD reflog are now on no branch: ${lost.join(' ')}`);
 		const tip = git(['rev-parse', '--verify', `refs/heads/${branch}`], repo);
 		const ahead = Number(git(['rev-list', '--count', `${base}..${tip}`], repo));
 		if (ahead === 0) {

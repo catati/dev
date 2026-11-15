@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -35,8 +35,8 @@ function box(t) {
 		return path;
 	};
 	const input = (event, fields) => JSON.stringify({ session_id: 's', hook_event_name: event, ...fields });
-	const hook = (event, fields) => {
-		const result = spawnSync(process.execPath, [script], { cwd: fields.cwd ?? project, env, encoding: 'utf8', input: input(event, fields) });
+	const hook = (event, fields, options) => {
+		const result = spawnSync(process.execPath, [script], { cwd: fields.cwd ?? project, env, encoding: 'utf8', input: input(event, fields), ...options });
 		return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 	};
 	const hookAsync = (event, fields) =>
@@ -265,6 +265,19 @@ test('a create whose checkout fails in one repo leaves no branch in any repo', (
 	assert.equal(b.create('smudge').status, 0);
 });
 
+test('a create whose post-checkout hook fails after writing a file leaves no worktree or branch', (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	mkdirSync(join(repo, '.git', 'hooks'), { recursive: true });
+	writeFileSync(join(repo, '.git', 'hooks', 'post-checkout'), '#!/bin/sh\necho junk > stray.txt\nexit 1\n', { mode: 0o755 });
+	const { status, stdout } = b.create('hooked', repo);
+	assert.equal(status, 1);
+	assert.equal(stdout, '');
+	assert.equal(b.branches(repo), '');
+	assert.doesNotMatch(b.worktrees(repo), /hooked/);
+	assert.equal(existsSync(join(repo, '.claude', 'worktrees', 'hooked')), false);
+});
+
 test('a stale repo lock left by a killed hook is cleared', (t) => {
 	const b = box(t);
 	const repo = b.repo('repo');
@@ -274,6 +287,26 @@ test('a stale repo lock left by a killed hook is cleared', (t) => {
 	utimesSync(lock, old, old);
 	assert.equal(b.create('after-crash').status, 0);
 	assert.equal(existsSync(lock), false);
+});
+
+test('a stale repo lock that cannot be cleared fails the hook at once instead of spinning', (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const lock = join(repo, '.git', 'catati-worktree.lock');
+	mkdirSync(lock);
+	const old = new Date(Date.now() - 120_000);
+	utimesSync(lock, old, old);
+	const root = process.getuid() === 0;
+	if (root) execFileSync('chattr', ['+i', lock]);
+	else chmodSync(join(repo, '.git'), 0o555);
+	try {
+		const { status, stderr } = b.hook('WorktreeCreate', { cwd: repo, name: 'stuck' }, { timeout: 10_000 });
+		assert.equal(status, 1, 'the hook exits on its own');
+		assert.match(stderr, /catati-worktree\.lock/);
+	} finally {
+		if (root) execFileSync('chattr', ['-i', lock]);
+		else chmodSync(join(repo, '.git'), 0o755);
+	}
 });
 
 test('remove keeps a worktree that holds another worktree, so the nested one keeps its uncommitted files', (t) => {
@@ -306,6 +339,30 @@ test('remove keeps a worktree that holds a worktree or clone of another repo wit
 	assert.equal(readFileSync(join(foreign, 'draft.txt'), 'utf8'), 'wip');
 });
 
+test('remove keeps a worktree whose ignored folder holds another repo, and removes it once that repo is gone', (t) => {
+	const b = box(t);
+	const dev = b.repo('dev');
+	const catHotel = b.repo('cat-hotel');
+	writeFileSync(join(dev, '.gitignore'), '.worktrees/\nnode_modules/\n');
+	b.git(dev, 'add', '.');
+	b.git(dev, 'commit', '-q', '-m', 'ignore');
+	const outer = b.create('outer', dev).stdout.trim();
+	mkdirSync(join(outer, 'node_modules', 'pkg'), { recursive: true });
+	writeFileSync(join(outer, 'node_modules', 'pkg', 'index.js'), '');
+	const foreign = join(outer, '.worktrees', 'foreign');
+	b.git(catHotel, 'worktree', 'add', '-q', '-b', 'manual', foreign);
+	writeFileSync(join(foreign, 'draft.txt'), 'wip');
+	const kept = b.remove(outer);
+	assert.equal(kept.status, 1);
+	assert.match(kept.stderr, /kept locked, it holds a repo in ignored \.worktrees\//);
+	assert.equal(readFileSync(join(foreign, 'draft.txt'), 'utf8'), 'wip');
+	assert.match(b.worktrees(dev), /worktree-outer\nlocked/);
+	b.git(catHotel, 'worktree', 'remove', '--force', foreign);
+	const removed = b.remove(outer);
+	assert.equal(removed.status, 0, removed.stderr);
+	assert.equal(existsSync(outer), false);
+});
+
 test('remove keeps a worktree that has switched to another branch, and both branches', (t) => {
 	const b = box(t);
 	const repo = b.repo('repo');
@@ -320,12 +377,41 @@ test('remove keeps a worktree that has switched to another branch, and both bran
 	assert.equal(existsSync(switcher), true);
 });
 
+test('remove names a commit that only the worktree HEAD reflog still holds', (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const path = b.create('reflog', repo).stdout.trim();
+	b.git(path, 'checkout', '-q', '--detach');
+	b.git(path, 'commit', '-q', '--allow-empty', '-m', 'stray');
+	const stray = b.git(path, 'rev-parse', 'HEAD');
+	b.git(path, 'checkout', '-q', 'worktree-reflog');
+	const { status, stderr } = b.remove(path);
+	assert.equal(status, 0, stderr);
+	assert.match(stderr, new RegExp(`only in its HEAD reflog.*${stray}`));
+	assert.equal(existsSync(path), false);
+	assert.equal(b.git(repo, 'cat-file', '-t', stray), 'commit');
+});
+
 test('a second remove of a path already removed exits 0', (t) => {
 	const b = box(t);
 	b.repo('repo');
 	const path = b.create('twice').stdout.trim();
 	assert.equal(b.remove(path).status, 0);
 	assert.deepEqual(b.remove(path), { status: 0, stdout: '', stderr: '' });
+});
+
+test('two removes of one path that wait on the repo lock both exit 0', async (t) => {
+	const b = box(t);
+	const repo = b.repo('repo');
+	const path = b.create('race').stdout.trim();
+	const lock = join(repo, '.git', 'catati-worktree.lock');
+	mkdirSync(lock);
+	const removing = [1, 2].map(() => b.hookAsync('WorktreeRemove', { cwd: b.project, worktree_path: path }));
+	await new Promise((done) => setTimeout(done, 400));
+	rmSync(lock, { recursive: true });
+	for (const { status, stderr } of await Promise.all(removing)) assert.equal(status, 0, stderr);
+	assert.equal(existsSync(path), false);
+	assert.equal(b.branches(repo), '');
 });
 
 test('a bare git push from a worktree branch fails', (t) => {
