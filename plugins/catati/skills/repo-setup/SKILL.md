@@ -45,12 +45,10 @@ An older run pinned catati/dev as a package. Remove each part of that wiring the
 
 1. **The dev dependency.** Remove an `@catati/dev` or `catati-dev` key from the root `package.json`, with the package manager the repo's lockfile names: `pnpm remove -D <key>` (add `-w` when `pnpm-workspace.yaml` exists) or `npm uninstall -D <key>`. That also removes its lockfile entries, such as a `git+https://github.com/catati/dev.git#<sha>` resolution. Then `git grep -n 'catati/dev' -- package.json pnpm-lock.yaml package-lock.json` prints nothing.
 2. **`catati check` in the gate.** Remove a `catati check` call from the `Makefile` `verify` target, a package script or a CI step, such as `npx catati check` or `$(PNPM) exec catati check`. Remove only the call, and keep the rest of the target or script.
-3. **`catati session-start`.** Remove a `catati session-start` call from a `Makefile` target, and a SessionStart hook in `.claude/settings.json` that runs it. Drop a `SessionStart` list, and then a `hooks` object, that the removal leaves empty. The plugin's own SessionStart hook does the setup part in every session.
-4. **Repo checks of the pin.** Leave a check the repo wrote for the pin, such as cat-hotel's `catatiDevLockUse`, and the docs that name it. List each one in the report as a follow-up for the repo's own PR.
-5. **Lines that name the old wiring.** Run `git grep -n -e 'catati check' -e 'catati session-start' -e '@catati/dev'` from the repo root. It also finds `catati check-merge` and `node_modules/@catati/dev/` paths. For each line it prints:
+3. **Lines that name the old wiring.** Run `git grep -n -e 'catati check' -e '@catati/dev'` from the repo root. It also finds `node_modules/@catati/dev/` paths. For each line it prints:
    - When the line names wiring this step removed and holds no other rule, such as a `make help` line or a doc sentence that lists `catati check` among the steps of `make verify`, drop that part, or the whole line when nothing true is left. A path under `node_modules/@catati/dev/` becomes the same path under `https://github.com/catati/dev/blob/main/`.
    - When the line is still true as it stands, such as one that says a `/catati:repo-setup` run checks a rule, leave it.
-   - Leave every other line, such as one that documents a check from item 4 or a rule that relies on the removed wiring. List it in the report as a follow-up, with its path and line number.
+   - Leave every other line, such as a rule that relies on the removed wiring. List it in the report as a follow-up, with its path and line number.
 
 ## 4. `CLAUDE.md`
 
@@ -58,10 +56,7 @@ Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep eve
 
 1. **The conventions link.** The file links to `https://github.com/catati/dev/tree/main/conventions` as the shared rules.
 2. **The rule table.** Apply the delete test of the rule-table rule in `conventions/issues-and-prs.md`: delete a row only when it adds nothing to the convention it restates. Leave every other row as it is, because the repo owns its wording. A row that names a repo enforcer, a repo name or account, or a stricter local form adds something, so a "No push to `main`" row that names `.githooks/pre-push` stays. When a kept row copies convention wording, list it in the report as a suggestion to link its convention section. When `CLAUDE.md` has no rule table, add none, because pstack's `/correct` keeps that table. In a table that exists, a rule that only `catati check` reads names `/catati:repo-setup` as its enforcer, because only a setup run runs that check. State each rule once. When the table holds a rule, delete its prose copy elsewhere in the file.
-3. **Exception lines.** Rewrite each `repo-check-allow(<check>): …` line in the repo to `catati-allow(<check>): <reason>; expires YYYY-MM-DD; approved by <name>`. Rewrite the format where `CLAUDE.md` and the repo's `README.md` state it, and the repo check that parses those lines, in the same PR.
-   - Editing a file in a [one-way-door path](https://github.com/catati/dev/blob/main/conventions/issues-and-prs.md#one-way-door-paths) makes this PR a door. The repo check usually sits in `.github/**`, and an allow line can sit in a door file such as `api/wrangler.jsonc`, which `**/wrangler.jsonc` matches.
-   - The `repo-check-allow` rewrite is all or nothing, because a check that reads only the new format stops reading any old line left behind. When it needs any door file, rewrite nothing and list each line, the format and the check in the report for the repo's own PR.
-4. **Approvers.** `catati check` reports a `catati-allow` line that names no approver as an `allow` finding. Never invent an approver. Ask the operator once for the missing names, and write only a name the operator gives, even in a door file. An approver written in a door file makes this PR a door. Without the names, list each such line in the report as a follow-up and go on.
+3. **Approvers.** `catati check` reports a `catati-allow` line that names no approver as an `allow` finding. Never invent an approver. Ask the operator once for the missing names, and write only a name the operator gives, even in a door file. An approver written in a door file makes this PR a door. Without the names, list each such line in the report as a follow-up and go on.
 
 ## 4b. Repo settings
 
@@ -79,7 +74,7 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
 1. Run `git status`. With no change, skip to the report and report "already up to date".
 2. Commit the changed files, including `package.json` and the lockfile. The repo's git hooks run. Fix what they flag in the files this run changed.
 3. Push the work branch. If the pre-push hook refuses, fix what it flags in the files this run changed, commit, and push again. A repo check that asks for a version bump, such as cat-hotel's `versionBumpMissing` after an approver lands in `api/wrangler.jsonc`, is an example: raise the version as the repo's `CLAUDE.md` says. Never skip a hook, and never push the base branch.
-   - When a failure needs a file this run did not change, push no more and open no PR. The usual case is a check or test that needs the pin, which step 3b.4 leaves, such as cat-hotel's `overbooked-nights-guard.test.mjs`, which imports `@catati/dev`, and the SSH-lockfile test in `ci-contract.test.mjs`. List each failing check and its file in the report as a follow-up the repo's own PR removes, and say the commit is on the local work branch only.
+   - When a failure needs a file this run did not change, push no more and open no PR. List each failing check and its file in the report as a follow-up the repo's own PR removes, and say the commit is on the local work branch only.
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch. pstack decides its title, body and readiness (`playbooks/opening-a-pr.md` of the `poteto-mode` skill).
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`, and note in it that it is part of catati/dev#8.
    - Body: the standard needs only `Closes #<N>` for that issue, and the `Blocked by:` line from item 7 when the PR has a merge order. When the run changed a version field, such as the root `package.json` `version`, the body's Blast Radius names each one. The setup output, findings and skipped files go in the report.
@@ -96,8 +91,8 @@ Reply with:
 - each skipped file and why a person must reconcile it;
 - each remaining `catati check` finding;
 - what changed in `CLAUDE.md`, and each kept rule-table row to link to its convention section;
-- each exception line left for the repo's own PR, each approver written with the operator's name for it, and each line still without an approver;
-- each repo check of the pin left as a follow-up, and each line from step 3b.5 rewritten or left as a follow-up;
+- each approver written with the operator's name for it, and each line still without an approver;
+- each line from step 3b.3 rewritten or left as a follow-up;
 - each label created, each repo setting that differs from the conventions, and each read that failed;
 - each door path the PR changes, and who merges;
 - the PR URL, "already up to date" when the run changed nothing, or each check that stopped the push in step 5.3.
