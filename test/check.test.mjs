@@ -81,7 +81,7 @@ test('ci-workflow flags a CI workflow with another name', (t) => {
 		status: 1,
 		lines: [
 			'ci-workflow: .github/workflows/ci.yml: file is missing',
-			'workflow-names: .github/workflows/checks.yml: workflow is not named ci.yml or deploy.yml',
+			'workflow-names: .github/workflows/checks.yml: workflow is not named ci.yml, deploy.yml or verifier-record.yml',
 		],
 	});
 });
@@ -201,11 +201,12 @@ test('a bad allow line in a file with no finding is still reported', (t) => {
 	assert.deepEqual(lines('catati-allow(make-targets): later; expires 2999-01-01; approved by Shien'), []);
 });
 
-test('workflow-names flags a workflow that is not ci.yml or deploy.yml', (t) => {
+test('workflow-names flags a workflow that is not ci.yml, deploy.yml or verifier-record.yml', (t) => {
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': 'on: push\n' }, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/verifier-record.yml': 'on: issue_comment\n' }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/apply-dev.yml': 'on: push\n' }, t), {
 		status: 1,
-		lines: ['workflow-names: .github/workflows/apply-dev.yml: workflow is not named ci.yml or deploy.yml'],
+		lines: ['workflow-names: .github/workflows/apply-dev.yml: workflow is not named ci.yml, deploy.yml or verifier-record.yml'],
 	});
 });
 
@@ -556,7 +557,7 @@ test('workflow-names and workflow reads count only YAML files in .github/workflo
 	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/plan.yaml': 'on: push\n' }, t), {
 		status: 1,
-		lines: ['workflow-names: .github/workflows/plan.yaml: workflow is not named ci.yml or deploy.yml'],
+		lines: ['workflow-names: .github/workflows/plan.yaml: workflow is not named ci.yml, deploy.yml or verifier-record.yml'],
 	});
 });
 

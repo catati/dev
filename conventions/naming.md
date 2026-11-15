@@ -43,7 +43,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | --- | --- | --- |
 | The CI workflow file is `.github/workflows/ci.yml`. | `ci.yml`, not `checks.yml`. | `catati check` |
 | The deploy workflow file is `.github/workflows/deploy.yml`. | `deploy.yml`, not `deploy-firebase.yml`. | `catati check` |
-| A repo's only workflow files are `.github/workflows/ci.yml` and `deploy.yml`. | `plan.yml` and `apply-dev.yml` move into `ci.yml` and `deploy.yml`. | `catati check` |
+| A repo's only workflow files are `.github/workflows/ci.yml`, `deploy.yml` and, when the repo checks its [verifier record](issues-and-prs.md#merges) in CI, `verifier-record.yml`. That check runs on `pull_request_target` and `issue_comment` with a write token, so it never shares a file with jobs that check out PR code. | `plan.yml` and `apply-dev.yml` move into `ci.yml` and `deploy.yml`. | `catati check` |
 | A deploy job is `<action>-<env>`. | `plan-dev`, `apply-prod`, `deploy-prod` | judgment |
 | CI has one check named `verify`. | `agents` reports one `verify` check. | judgment |
 | A monorepo has one check per package, named `<package>-verify`. | The `cat-hotel` admin check is `admin-verify`, not `admin/verify`. | judgment |

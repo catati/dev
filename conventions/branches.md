@@ -18,7 +18,7 @@ Each repo has two branch rulesets on its default branch, `main` and `check`. `ma
 | In a repo that a Shopify app writes to, `shopify[bot]` is exempt from the `main` ruleset. | judgment |
 | The `check` ruleset requires the checks that the repo's docs list as required. See [ci.md](ci.md#required-checks). | judgment |
 | The `check` ruleset is strict, so a PR's branch must hold the current `main` before it merges. | judgment |
-| The `check` ruleset has no bypass actor. Every agent acts as the operator's GitHub account, so a bypass the operator holds lets an agent merge a red PR. In an emergency the operator edits the ruleset, and GitHub records that edit. | judgment |
+| The `check` ruleset's only bypass actor is the OrganizationAdmin role, kept on purpose as break-glass (operator, 2026-11-15). Every agent acts as the operator's GitHub account and so holds that bypass: an agent checks the verifier record and green required CI itself before it merges, and never merges past a red check. | judgment |
 
 ## Session start
 
