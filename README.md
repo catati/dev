@@ -6,7 +6,7 @@ The repo has four parts:
 
 | Part | Where | What it is |
 | --- | --- | --- |
-| Conventions | [`conventions/`](conventions/) | The rules every Catati repo follows: names, branches, deploys, CI, issues and merges. |
+| Conventions | [`conventions/`](conventions/) | The rules every Catati repo follows: names, branches, deploys, CI, issues, merges and specs. |
 | `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` finds where a repo breaks the rules. `catati setup` writes the files every repo carries. |
 | `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` skill and the session hooks. |
 | Cloud environment | [`env/`](env/) | The `dev` environment on claude.ai/code, as files. |
@@ -118,7 +118,8 @@ Do not add a repo tool to [`env/setup.sh`](env/setup.sh). Fix the repo instead. 
 | [`naming.md`](conventions/naming.md) | Names of repos, resources, versions, make targets, CI checks, files and labels, and the recorded exceptions. |
 | [`branches.md`](conventions/branches.md) | Branches, the `main` and `check` rulesets, and session start. |
 | [`deploy.md`](conventions/deploy.md) | The `dev` and `prod` environments, the deploy pipeline, the `deploy-prod` and `apply-prod` jobs, config, secrets and migrations. |
-| [`issues-and-prs.md`](conventions/issues-and-prs.md) | `CLAUDE.md`, issues, the verify gates, the verifier record, one-way-door paths and who merges. |
+| [`issues-and-prs.md`](conventions/issues-and-prs.md) | `CLAUDE.md`, issues, the verify gates, opening and watching a PR, the verifier record, one-way-door paths and who merges. |
+| [`specs.md`](conventions/specs.md) | What a design spec holds, including running cost and the platform-native alternative. |
 | [`ci.md`](conventions/ci.md) | The `changes` job that runs only the CI jobs a diff affects, job gates, drafts, pushes to `main` and required checks. |
 | [`repo-settings.md`](conventions/repo-settings.md) | The GitHub settings a repo keeps: Dependabot, rulesets, the `prod` environment review and the status labels. |
 | [`testing.md`](conventions/testing.md) | The unit, integration and e2e layers, their make targets, and what only production exercises. |
@@ -264,7 +265,7 @@ Each field of the `dev` environment form has one source file.
 | Environment variables | Paste [`env/.env.example`](env/.env.example), then fill the blank values in the form. Use dev values only, because every user of the environment can read them. |
 | Setup script | Paste [`env/setup.sh`](env/setup.sh). |
 
-**Network allowlist.** Never block a Catati domain. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and as `*.`. When a zone is added there, add it to the list and to `catatiZones` in [`test/network-allowlist.test.mjs`](test/network-allowlist.test.mjs).
+**Network allowlist.** Never block a Catati domain, Google Fonts, Google Analytics, Cloudflare or Shopify. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and as `*.`. When a zone is added there, add it to the list and to `catatiZones` in [`test/network-allowlist.test.mjs`](test/network-allowlist.test.mjs). A project thread can add only exact hosts to the cloud environment. A wildcard needs the operator in Project settings, so the thread gives the operator the whole paste-ready field in one message.
 
 **Setup script.** `env/setup.sh` installs Node 24, enables corepack, checks that uv is present and installs the Playwright system libraries. Before Claude starts, it also writes the pstack model rule to `~/.claude/rules/pstack-models.md` when that file is missing, so a session without the plugin still has the rule. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
 

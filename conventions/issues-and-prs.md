@@ -20,6 +20,7 @@ Title formats, status label names and the labels file are in [naming.md](naming.
 | An open issue has exactly one status label. | judgment |
 | `todo` means planned and ready. `doing` means a builder has it. `review` means its PR is open. `blocked` means it waits on a person. | judgment |
 | Work that spans several issues has one epic issue. Each issue is a native GitHub sub-issue of the epic. | judgment |
+| No throwaway code stays in a repo untracked. Every temporary flag, stub or switch has an open issue for its removal, linked from the code's test or the PR (operator, 2026-11-14). | judgment |
 
 ## Verification
 
@@ -29,6 +30,15 @@ The gates a repo provides. pstack decides when to run them.
 | --- | --- |
 | `make verify` exits 0 in a fresh `dev` cloud session. | judgment |
 | Each PR gets a preview URL on dev resources. | judgment |
+
+## PRs
+
+| Rule | Check |
+| --- | --- |
+| Before a session opens a PR, it lists the open PRs and the files they touch. The PR body says which of them overlap, or that none do (Cat Hotel project memory, since 2026-11-14). | judgment |
+| The session that opens a PR subscribes to it with `subscribe_pr_activity` (operator, 2026-11-15). | judgment |
+| A subscription does not wake when `main` moves and the PR turns `dirty` or `behind`. So the session re-reads the `mergeable_state` of each of its open PRs on every wake, before every merge, and on each check-in while a merge ask waits (operator, 2026-11-15, after cat-hotel#562 and #573). | judgment |
+| On `dirty` or `behind`, the session merges `main` into the PR, fixes any conflict, gets a fresh verifier record at the new head and updates its one merge ask. | judgment |
 
 ## Merges
 
@@ -60,7 +70,7 @@ The operator merges a PR that adds, changes or removes a file at one of these pa
 | `.gitmodules`, and any symlink or submodule | Where each submodule is fetched from. A link can point a plain path at a door file. |
 | `**/.npmrc` | The registry that installs, deploys included, fetch packages from. |
 | `env/setup.sh` | The setup script of every cloud session. |
-| `**/package.json` | Deploy and release scripts live in `scripts`. |
+| `**/package.json` | Deploy and release scripts live in `scripts`. A PR that changes only `package.json` files and `pnpm-lock.yaml`, and changes only `version` and entries under `dependencies`, `devDependencies`, `optionalDependencies` or `pnpm.overrides`, is not a door. A change to `scripts`, `packageManager`, `engines` or any other field is (operator, 2026-11-15, cat-hotel#571). |
 | `**/Makefile`, `**/GNUmakefile`, `**/*.mk` | Deploy targets. A variable or an `include` can change one without touching its lines, so any change counts. |
 | `**/Dockerfile`, `**/Dockerfile.*`, `**/*.Dockerfile`, `**/Containerfile`, `**/Containerfile.*`, `**/*.Containerfile`, `**/compose*.yml`, `**/compose*.yaml`, `**/docker-compose*` | What the deployed containers run. |
 | `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
