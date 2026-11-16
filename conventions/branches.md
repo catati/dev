@@ -5,6 +5,7 @@
 | Rule | Check |
 | --- | --- |
 | `main` is the only long-lived branch. | judgment |
+| A project thread pushes its platform branch `claude/project-thread-<id>`. It may also push `claude/project-thread-<id>-<n>`, with `<n>` from 2 up, in any project repo, so a door PR that waits for the operator does not stall a plan. Any other branch name needs the operator's words (operator, decision card 2026-11-14). | judgment |
 | `catati-horizon` keeps two long-lived branches, `dev` and `main`, until the Horizon spike reports. | judgment |
 | In `catati-horizon`, a work branch starts from `dev` and its PR targets `dev`. | judgment |
 
