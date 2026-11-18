@@ -21,6 +21,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | A name that carries an environment ends in it, after `-`, or after `:` in a package script. | `deploy-dev`, `deploy:dev`, `plan-prod` | `catati check` for GitHub environments. Other names need judgment. |
 | A Cloudflare API token is named `<repo>/<GitHub environment>`. Dev has one user token instead, `catati-dev/all`, used everywhere in dev (operator, 2026-11-14). | `terraform/plan-prod`, `cat-hotel/prod` | judgment |
 | A secret is named for what it holds, the same in every GitHub environment. | `CLOUDFLARE_API_TOKEN` in `dev` and in `prod`, never `CATATI_API_TOKEN` | `catati check` for env and org tokens; judgment for the same name in every environment |
+| In the cloud `dev` environment, a variable that a tool reads keeps the tool's name. The shared test login, `TEST_ACCOUNT_EMAIL` and `TEST_ACCOUNT_PASSWORD`, has no prefix, because every repo uses it in dev (operator, 2026-11-19). Any other variable starts with the stem of the repo that owns it, in upper snake case. | `WRANGLER_SEND_METRICS`, `TEST_ACCOUNT_EMAIL`, `CAT_HOTEL_SHOPIFY_CLIENT_SECRET` | `npm test` in `catati/dev` for `env/.env.example` |
 
 ## Make targets
 
