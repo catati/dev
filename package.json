@@ -4,16 +4,6 @@
   "private": true,
   "description": "Checks that a Catati repo follows the shared names and templates",
   "type": "module",
-  "bin": {
-    "catati": "bin/catati.mjs"
-  },
-  "files": [
-    "bin",
-    "lib",
-    "plugins",
-    "conventions",
-    "templates"
-  ],
   "engines": {
     "node": ">=24.15"
   },

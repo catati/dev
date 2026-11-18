@@ -195,7 +195,7 @@ node bin/catati.mjs setup [--dry-run]
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/` and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
-| `.github/pull_request_template.md`, `.github/workflows/pr-format.yml` | Deletes each one, because catati/dev no longer manages them. |
+| `.github/pull_request_template.md` | Deletes it, because catati/dev no longer manages it. |
 
 A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](conventions/issues-and-prs.md#one-way-door-paths).
 
@@ -225,7 +225,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 
 | Part | What it does |
 | --- | --- |
-| [`/catati:repo-setup`](plugins/catati/skills/repo-setup/SKILL.md) | Clones catati/dev `main` and runs `catati setup` from it in the target repo. Removes an old `@catati/dev` pin. Adds the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
+| [`/catati:repo-setup`](plugins/catati/skills/repo-setup/SKILL.md) | Clones catati/dev `main` and runs `catati setup` from it in the target repo. Adds the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
 | SessionStart hook [`session-start.mjs`](plugins/catati/hooks/session-start.mjs) | Installs `~/.claude/rules/pstack-models.md` when it is missing. Where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it. It acts in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the current directory), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
 | WorktreeCreate and WorktreeRemove hook [`worktree.mjs`](plugins/catati/hooks/worktree.mjs) | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. See [Worktree subagents](#worktree-subagents). |
 

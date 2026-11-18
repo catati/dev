@@ -7,7 +7,7 @@ description: Set a Catati repo up to the catati/dev standard, or bring it up to 
 
 Run this in the git repo the person names, or the one that holds the current directory. Each run converges the repo on the standard. A run on a repo that is already up to date changes nothing, opens no PR and reports "already up to date".
 
-The repo takes no dependency on catati/dev. This skill fetches the standard, runs `catati setup` from that copy, removes the old pin wiring, does the `CLAUDE.md` judgment steps, checks the repo's GitHub settings, and opens one PR.
+The repo takes no dependency on catati/dev. This skill fetches the standard, runs `catati setup` from that copy, does the `CLAUDE.md` judgment steps, checks the repo's GitHub settings, and opens one PR.
 
 ## 1. Fetch the standard
 
@@ -39,17 +39,6 @@ Run `node <standard>/bin/catati.mjs setup` from the repo root and keep its stdou
 
 Setup exits 0 when it ran. Any other exit code means it did not run, such as 2 when it cannot read the repo or 1 when Node cannot load the CLI. Stop and report the exit code and the last stderr line.
 
-## 3b. Remove the old pin
-
-An older run pinned catati/dev as a package. Remove each part of that wiring the repo still has, and list each removal in the report.
-
-1. **The dev dependency.** Remove an `@catati/dev` or `catati-dev` key from the root `package.json`, with the package manager the repo's lockfile names: `pnpm remove -D <key>` (add `-w` when `pnpm-workspace.yaml` exists) or `npm uninstall -D <key>`. That also removes its lockfile entries, such as a `git+https://github.com/catati/dev.git#<sha>` resolution. Then `git grep -n 'catati/dev' -- package.json pnpm-lock.yaml package-lock.json` prints nothing.
-2. **`catati check` in the gate.** Remove a `catati check` call from the `Makefile` `verify` target, a package script or a CI step, such as `npx catati check` or `$(PNPM) exec catati check`. Remove only the call, and keep the rest of the target or script.
-3. **Lines that name the old wiring.** Run `git grep -n -e 'catati check' -e '@catati/dev'` from the repo root. It also finds `node_modules/@catati/dev/` paths. For each line it prints:
-   - When the line names wiring this step removed and holds no other rule, such as a `make help` line or a doc sentence that lists `catati check` among the steps of `make verify`, drop that part, or the whole line when nothing true is left. A path under `node_modules/@catati/dev/` becomes the same path under `https://github.com/catati/dev/blob/main/`.
-   - When the line is still true as it stands, such as one that says a `/catati:repo-setup` run checks a rule, leave it.
-   - Leave every other line, such as a rule that relies on the removed wiring. List it in the report as a follow-up, with its path and line number.
-
 ## 4. `CLAUDE.md`
 
 Edit the repo's `CLAUDE.md`, or `AGENTS.md` when no `CLAUDE.md` exists. Keep every repo-specific rule. Change only what these items need.
@@ -72,27 +61,26 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
 ## 5. Commit and open the PR
 
 1. Run `git status`. With no change, skip to the report and report "already up to date".
-2. Commit the changed files, including `package.json` and the lockfile. The repo's git hooks run. Fix what they flag in the files this run changed.
+2. Commit the changed files. The repo's git hooks run. Fix what they flag in the files this run changed.
 3. Push the work branch. If the pre-push hook refuses, fix what it flags in the files this run changed, commit, and push again. Never raise `version` to satisfy a check, because only a `release: X.Y.Z` PR changes it (catati/dev `conventions/naming.md`, Versions). Never skip a hook, and never push the base branch.
    - When a failure needs a file this run did not change, push no more and open no PR. List each failing check and its file in the report as a follow-up the repo's own PR fixes, and say the commit is on the local work branch only.
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch. pstack decides its title, body and readiness (`playbooks/opening-a-pr.md` of the `poteto-mode` skill).
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`.
-   - Body: the standard needs only `Closes #<N>` for that issue, and the `Blocked by:` line from item 7 when the PR has a merge order. When the run changed a version field, such as the root `package.json` `version`, the body's Blast Radius names each one. The setup output, findings and skipped files go in the report.
+   - Body: the standard needs only `Closes #<N>` for that issue, and the `Blocked by:` line from item 7 when the PR has a merge order. The setup output, findings and skipped files go in the report.
 5. Verification follows the pstack playbook in use, which decides who verifies and who posts the record. The record's first line is `VERIFIER PASS <full 40-character head SHA>`, per the Merges section of `conventions/issues-and-prs.md`.
-6. Decide who merges. List the changed files with `git diff --name-only origin/<base>...HEAD` and compare them with the one-way-door paths in `<standard>/conventions/issues-and-prs.md`. A PR that changes one of those paths, or whose merge changes prod, is a door, and the operator merges it. Removing the pin changes `package.json`, so that run's PR is a door. Any other PR merges per the pstack playbook in use, once the record names its head and the required CI is green.
+6. Decide who merges. List the changed files with `git diff --name-only origin/<base>...HEAD` and compare them with the one-way-door paths in `<standard>/conventions/issues-and-prs.md`. A PR that changes one of those paths, or whose merge changes prod, is a door, and the operator merges it. Any other PR merges per the pstack playbook in use, once the record names its head and the required CI is green.
 7. If this PR must merge before or after another PR, record the order in the later PR's body as one line `Blocked by: <ref>, <ref>`. Each ref is `#N` or `owner/repo#N`, per the Merges section of `conventions/issues-and-prs.md`. Do not add a native `blocked_by` dependency to a PR, because GitHub refuses one on a PR.
 
 ## 6. Report
 
 Reply with:
 
-- the standard's SHA, and each part of the old pin the run removed;
+- the standard's SHA;
 - the setup output;
 - each skipped file and why a person must reconcile it;
 - each remaining `catati check` finding;
 - what changed in `CLAUDE.md`, and each kept rule-table row to link to its convention section;
 - each approver written with the operator's name for it, and each line still without an approver;
-- each line from step 3b.3 rewritten or left as a follow-up;
 - each label created, each repo setting that differs from the conventions, and each read that failed;
 - each door path the PR changes, and who merges;
 - the PR URL, "already up to date" when the run changed nothing, or each check that stopped the push in step 5.3.

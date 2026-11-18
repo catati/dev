@@ -108,7 +108,7 @@ test('a differing managed file is updated, and a hook gets its exec bit back', (
 	assert.deepEqual(box.file('.node-version'), template('node-version'));
 });
 
-const retired = ['.github/pull_request_template.md', '.github/workflows/pr-format.yml'];
+const retired = ['.github/pull_request_template.md'];
 
 test('a run removes each file setup no longer manages, and a second run reports nothing', (t) => {
 	const box = sandbox(t, { files: Object.fromEntries(retired.map((path) => [path, 'old copy\n'])) });
@@ -123,9 +123,9 @@ test('a run removes each file setup no longer manages, and a second run reports 
 });
 
 test('--dry-run reports a retired file it would remove and keeps it', (t) => {
-	const box = sandbox(t, { files: { '.github/workflows/pr-format.yml': 'old copy\n' } });
-	assert.ok(box.run('--dry-run').lines.includes('removed .github/workflows/pr-format.yml'));
-	assert.equal(box.file('.github/workflows/pr-format.yml').toString(), 'old copy\n');
+	const box = sandbox(t, { files: { '.github/pull_request_template.md': 'old copy\n' } });
+	assert.ok(box.run('--dry-run').lines.includes('removed .github/pull_request_template.md'));
+	assert.equal(box.file('.github/pull_request_template.md').toString(), 'old copy\n');
 });
 
 test('a retired path that is not a regular file is left as is', (t) => {
@@ -155,7 +155,7 @@ test('a managed path that is a symlink is left as is', (t) => {
 
 test('a managed directory that is a symlink out of the repo is skipped, and nothing outside changes', async (t) => {
 	const cases = {
-		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md', '.github/workflows/pr-format.yml'],
+		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md'],
 		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
 		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
 	};
