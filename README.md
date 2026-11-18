@@ -279,7 +279,7 @@ Treat every committed value as public.
 | --- | --- |
 | A value that is not secret | Commit it in `env/.env.example`. |
 | A secret | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
-| A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID`, `SUPABASE_URL` and `SHOPIFY_SHOP` | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
+| A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID` and `SHOPIFY_CLIENT_ID` | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
 | A value that differs per repo | Commit it in that repo, not here. |
 
 > [!WARNING]
@@ -294,7 +294,7 @@ Cloudflare is the only serverless provider. Firebase is being removed, so this e
 | `catsper` | `make install` | None. `make install` already runs `playwright install chromium`. | No `.git/env` in the cloud, so `configure` reports `web/.env` as missing. `make integration-test` and `make e2e-test` run Firebase emulators, which this environment does not provide. The `catsper-dev` Worker exists in Cloudflare, but `catsper` `main` has no `wrangler` config yet. |
 | `cat-hotel` | `make install` | None. `@shopify/cli` is a root devDependency (catati/cat-hotel#255), and `make install` runs `pnpm install` and `playwright install chromium` (catati/cat-hotel#223). | `wrangler` is already a devDependency. `shopify app deploy --config dev` needs `SHOPIFY_SERVICE_ACCOUNT_TOKEN`. |
 | `agents` | `make tools-install` | None. `make tools-install` installs the pinned `shfmt` and `shellcheck` (catati/agents#570, on `main` through catati/agents#572). | Python comes from `requires-python` in `tools/product-labels/pyproject.toml`. `make gmail-auth` and `mcp-deploy ENV=prod` run only on a Mac. |
-| `catati-horizon` | `npm ci` | Fixed on `dev` only (catati/catati-horizon#60). The fix declares `@shopify/cli`, drops `jq` and installs Playwright Chromium. The gap stays open until the fix reaches `main`, the default branch that cloud sessions clone. | `shopify theme dev` needs `SHOPIFY_CLI_THEME_TOKEN`. |
+| `catati-horizon` | `npm ci` | Fixed on `dev` only (catati/catati-horizon#60). The fix declares `@shopify/cli`, drops `jq` and installs Playwright Chromium. The gap stays open until the fix reaches `main`, the default branch that cloud sessions clone. | The `dev` environment holds no Shopify theme token, so `shopify theme dev` needs a browser login. |
 | `branding` | `npm ci`, and Python scripts through `uv run` | None. `package.json` pins `wrangler`, and `pyproject.toml` declares `fonttools` and `brotli` (catati/branding#5). | |
 | `knowledge` | `make install` | None. `make install` runs `gitleaks-install` (catati/knowledge#13). | |
 
