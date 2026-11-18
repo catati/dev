@@ -55,7 +55,7 @@ The environment serves catsper, cat-hotel, terraform and catati/dev. Cloudflare 
 | --- | --- | --- |
 | `catsper` | `make install` | `make install` installs the packages and Playwright's Chromium, and switches on the Git hooks. No `.git/env` exists in the cloud, so `make install` reports `web/.env` as missing. Tests run against a local `wrangler dev` with local D1 and R2, with no Firebase. A merge to `main` deploys the two dev Workers, `catsper-api` and `catsper-web`, through Workers Builds. |
 | `terraform` | `make install` | `make install` runs `npm ci`, downloads the pinned Terraform into `.tools/bin` and checks its SHA-256, and switches on the Git hooks. A plan needs `CLOUDFLARE_API_TOKEN`, the dev token `catati-dev/all`. Agents may plan and apply `cat-hotel/dev`. Its `CLAUDE.md` lists the prod actions that need the operator. |
-| `cat-hotel` | `make install` | `make install` runs `pnpm install` and `playwright install chromium`. `@shopify/cli` is a root devDependency, and `wrangler` is a devDependency of each app. `shopify app deploy --config dev` needs `SHOPIFY_SERVICE_ACCOUNT_TOKEN`. |
+| `cat-hotel` | `make install` | `make install` runs `pnpm install` and `playwright install chromium`. `@shopify/cli` is a root devDependency, and `wrangler` is already a devDependency. `shopify app deploy --config dev` needs `SHOPIFY_SERVICE_ACCOUNT_TOKEN`. |
 | `dev` | None | The CLI uses only Node built-ins. |
 
 Each repo must install every tool it needs through its install step. If a session lacks a tool, fix the repo's install step, and the session gets the tool once that fix reaches `main`.
