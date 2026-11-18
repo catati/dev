@@ -61,14 +61,14 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
 ## 5. Commit and open the PR
 
 1. Run `git status`. With no change, skip to the report and report "already up to date".
-2. Commit the changed files, including `package.json` and the lockfile. The repo's git hooks run. Fix what they flag in the files this run changed.
+2. Commit the changed files. The repo's git hooks run. Fix what they flag in the files this run changed.
 3. Push the work branch. If the pre-push hook refuses, fix what it flags in the files this run changed, commit, and push again. Never raise `version` to satisfy a check, because only a `release: X.Y.Z` PR changes it (catati/dev `conventions/naming.md`, Versions). Never skip a hook, and never push the base branch.
    - When a failure needs a file this run did not change, push no more and open no PR. List each failing check and its file in the report as a follow-up the repo's own PR fixes, and say the commit is on the local work branch only.
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch. pstack decides its title, body and readiness (`playbooks/opening-a-pr.md` of the `poteto-mode` skill).
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`.
-   - Body: the standard needs only `Closes #<N>` for that issue, and the `Blocked by:` line from item 7 when the PR has a merge order. When the run changed a version field, such as the root `package.json` `version`, the body's Blast Radius names each one. The setup output, findings and skipped files go in the report.
+   - Body: the standard needs only `Closes #<N>` for that issue, and the `Blocked by:` line from item 7 when the PR has a merge order. The setup output, findings and skipped files go in the report.
 5. Verification follows the pstack playbook in use, which decides who verifies and who posts the record. The record's first line is `VERIFIER PASS <full 40-character head SHA>`, per the Merges section of `conventions/issues-and-prs.md`.
-6. Decide who merges. List the changed files with `git diff --name-only origin/<base>...HEAD` and compare them with the one-way-door paths in `<standard>/conventions/issues-and-prs.md`. A PR that changes one of those paths, or whose merge changes prod, is a door, and the operator merges it. Removing the pin changes `package.json`, so that run's PR is a door. Any other PR merges per the pstack playbook in use, once the record names its head and the required CI is green.
+6. Decide who merges. List the changed files with `git diff --name-only origin/<base>...HEAD` and compare them with the one-way-door paths in `<standard>/conventions/issues-and-prs.md`. A PR that changes one of those paths, or whose merge changes prod, is a door, and the operator merges it. Any other PR merges per the pstack playbook in use, once the record names its head and the required CI is green.
 7. If this PR must merge before or after another PR, record the order in the later PR's body as one line `Blocked by: <ref>, <ref>`. Each ref is `#N` or `owner/repo#N`, per the Merges section of `conventions/issues-and-prs.md`. Do not add a native `blocked_by` dependency to a PR, because GitHub refuses one on a PR.
 
 ## 6. Report
