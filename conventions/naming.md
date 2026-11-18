@@ -28,7 +28,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | --- | --- | --- |
 | The Makefile has the targets `install`, `test`, `e2e`, `verify`, `lint`, `help`, `format` and `staged-check`. The template git hooks call `staged-check` before a commit and `lint` before a push, and name `format` as the fix. | `make e2e`, not `make e2e-test`. | `catati check` |
 | A repo with a `wrangler.jsonc` has the target `deploy-dev`. | `make deploy-dev` deploys to the dev account. | `catati check` |
-| The Makefile has the target `dev`. | `make dev` runs the local dev server. | judgment |
+| A repo with a `wrangler.jsonc` has the target `dev`. | `make dev` runs the local dev server. | judgment |
 | A make target or package script that acts on one environment ends in it. A script that checks both has no environment in its name. | `make deploy-dev`, `pnpm deploy:dev`, `check:env` | judgment |
 
 ## Versions
@@ -36,7 +36,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | Rule | Example | Check |
 | --- | --- | --- |
 | A repo with a `wrangler.jsonc` has one semantic version, `MAJOR.MINOR.PATCH`, as `version` in its root `package.json`. No other `package.json` outside `node_modules` declares a `version`. | `"version": "2.1.3"` in the root `package.json`, and none in `api/package.json` | `catati check` |
-| The PR that ships a change bumps the version: MAJOR for a change that breaks a user or a contract, MINOR for a new feature, PATCH for a fix. | A new booking field is MINOR. | A repo check, because which paths ship differs per repo. cat-hotel's `versionBumpMissing` in `.github/scripts/repo-rules.mjs` is the reference. |
+| A PR that ships a change leaves `version` alone. Its title type gives the bump kind: `feat` is MINOR, `fix`, `perf`, `refactor`, `revert`, `chore` and `build` are PATCH, and `!` after the type is MAJOR. Each prod release first merges one `release: X.Y.Z` PR that changes only `version`. | `feat(api): add a booking field` ships a MINOR bump in the next `release: 2.4.0` PR. | A repo check, because which paths ship differs per repo. cat-hotel runs `bumpKindMissing` and `versionOutsideRelease` from `.github/scripts/repo-rules.mjs` in `check-repo.mjs`. catsper runs `scripts/version-check.mjs`. |
 
 ## CI workflows and checks
 
@@ -55,7 +55,6 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | Rule | Example | Check |
 | --- | --- | --- |
 | An env template is named `.env.example`. | `admin/.env.example` | `catati check` |
-| Docs live in `docs/adr`, `docs/agents`, `docs/research` and `docs/evidence`. | An architecture decision goes in `docs/adr/`. | judgment |
 
 ## Shared package
 
@@ -83,7 +82,5 @@ Each row that can end names the open issue that tracks its end. A row with no en
 | `agents/.prod.env` | `.env.example` | No end date. | None. No end date. |
 | Repo `catati-horizon` | The repo name is the stem. | The Horizon spike reports. | [dev#97](https://github.com/catati/dev/issues/97) |
 | Shopify stores `catati-dev-store` and `3dd4ee` | `<repo>-<env>` | No end date. Shopify fixes store domains. | None. No end date. |
-| `cat-hotel` api top-level Worker name `catati-cat-hotel-api` | `<repo>-<component>` | The top level stops naming it, by 2026-12-31. | [cat-hotel#533](https://github.com/catati/cat-hotel/issues/533) |
 | `cat-hotel` Shopify apps `catati-cat-hotel-dev` and `catati-cat-hotel` | `<repo>-<env>` | They become `cat-hotel-dev` and `cat-hotel-prod`. | [cat-hotel#535](https://github.com/catati/cat-hotel/issues/535) |
 | Turnstile widget `cat-hotel booking` | `<repo>-<component>` | `terraform` renames it to `cat-hotel-landing`. | [cat-hotel#536](https://github.com/catati/cat-hotel/issues/536) |
-| GitHub environments `development` and `production` in `catsper` | `dev` and `prod` only | `catsper` renames them. | [dev#105](https://github.com/catati/dev/issues/105) |

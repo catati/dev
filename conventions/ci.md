@@ -37,6 +37,12 @@ These rules keep Actions minutes near zero. Every run bills each job's time roun
 | Each package job waits for the tooling job. GitHub counts a check that was skipped on the draft as passed until the ready run creates a new one. | cat-hotel: `ci.yml`; judgment elsewhere |
 | A push to `main` runs only the tooling job, because the PR already ran the package jobs. This is safe only while the `check` ruleset is strict, so every PR ran its jobs on the current `main`. See [branches.md](branches.md#rulesets). | judgment |
 
+## Actions
+
+| Rule | Enforced by |
+| --- | --- |
+| Every `uses:` in a workflow or a local action pins a full 40-character commit SHA. A trailing comment may name the version, such as `# v4.2.0`. Local actions (`./…`) and `docker://` images need no SHA. | `catati check` (`action-pins`) |
+
 ## Required checks
 
 | Rule | Enforced by |
