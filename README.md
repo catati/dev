@@ -279,7 +279,7 @@ Treat every committed value as public.
 | --- | --- |
 | A value that is not secret | Commit it in `env/.env.example`. |
 | A secret | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
-| A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID` and `SHOPIFY_CLIENT_ID` | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
+| A value that identifies a Catati account but grants no access, such as `CLOUDFLARE_ACCOUNT_ID` | Keep the name with a blank value in `env/.env.example`. Fill the value only in the form. |
 | A value that differs per repo | Commit it in that repo, not here. |
 
 > [!WARNING]
