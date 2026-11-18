@@ -4,7 +4,7 @@
 # A non-zero exit fails session start, so keep every step idempotent.
 #
 # Scope: runtimes, root-only OS libraries and the pstack model rule. Repo tools belong in each repo
-# (see README "Repo contract").
+# (see docs/cloud-environment.md).
 set -euo pipefail
 
 # --- pstack model rule -----------------------------------------------------------
