@@ -2,9 +2,6 @@
 # Catati cloud dev environment: setup script for claude.ai/code.
 # Runs as root on Ubuntu 24.04 before Claude starts. Environment variables are not set yet.
 # A non-zero exit fails session start, so keep every step idempotent.
-#
-# Scope: runtimes, root-only OS libraries and the pstack model rule. Repo tools belong in each repo
-# (see docs/cloud-environment.md).
 set -euo pipefail
 
 # --- pstack model rule -----------------------------------------------------------
