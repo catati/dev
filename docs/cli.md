@@ -56,8 +56,9 @@ The check reads commands this way:
 
 - It skips a command with an argument that is only a variable it cannot expand, such as `$$ENV_ARGS`, because that variable may hold `--env`.
 - A variable given as the value of a Wrangler flag, such as `--name ${X}`, does not skip the command.
-- In a `Makefile`, it reads only recipe lines, never comments, and skips `echo` and `printf` commands. It expands `$(NAME)` and `${NAME}` from `=`, `:=`, `?=` and `+=` variable lines, and reads commands inside `(` and `)`.
-- It splits commands at `&&`, `||`, `;` and `|` without reading quotes. A separator inside a quoted string therefore splits the command there too.
+- In a `Makefile`, it reads only recipe lines, never comments. It expands `$(NAME)` and `${NAME}` from `=`, `:=`, `?=` and `+=` variable lines.
+- In every source, it skips `echo` and `printf` commands. It reads the commands inside `(` and `)`, `$(…)`, backticks, and `sh -c`, `bash -c` or `zsh -c`.
+- It splits commands at `&&`, `||`, `&`, `;`, `|` and new lines. It reads quotes, so a separator inside a quoted string does not split the command.
 
 ## Allow lines
 

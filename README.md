@@ -61,7 +61,7 @@ The environment form on claude.ai/code has no API, so each field has a source fi
 1. Change the files in `env/` in a PR.
 2. After the merge, paste each changed file into its field of the `dev` form. [The form fields](docs/cloud-environment.md#the-form-fields) lists the file for each field.
 3. Start a new cloud session.
-4. In the new session, run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Node must be `v24.15` or later.
+4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Node must be `v24.15` or later.
 5. Check that `~/.claude/rules/pstack-models.md` exists.
 6. Check that the session lists `/pstack:poteto-mode` and `/catati:repo-setup`.
 7. Run the repo's install step. [Repos in the environment](docs/cloud-environment.md#repos-in-the-environment) lists each one.
@@ -76,7 +76,7 @@ The environment form on claude.ai/code has no API, so each field has a source fi
 
 pstack decides how an agent plans, builds, verifies, opens a PR and merges. catati/dev decides what a Catati repo looks like, so that those steps work the same way in every repo. That covers names, the `make verify` gate, the git hooks, the deploy paths and who may change prod.
 
-When pstack already covers something, catati/dev adds nothing for it. For example, pstack's Opening a PR playbook sets PR titles and bodies, so catati/dev ships no PR template. The merge rules in [`conventions/issues-and-prs.md`](conventions/issues-and-prs.md#merges) add only the two things pstack leaves open. They set the format of the verifier record, and they name the merges that the operator does. The operator is the person who owns Catati's GitHub org and production accounts.
+When pstack already covers something, catati/dev adds nothing for it. For example, pstack's Opening a PR playbook sets PR titles and bodies, so catati/dev ships no PR template. The merge rules in [`conventions/issues-and-prs.md`](conventions/issues-and-prs.md#merges) add only the two things pstack leaves open. They set the format of the verifier record, and they name the merges that the operator does. The operator is the person behind the `catati-ops` GitHub account.
 
 ## Conventions
 
