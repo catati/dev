@@ -7,7 +7,7 @@ description: Set a Catati repo up to the catati/dev standard, or bring it up to 
 
 Run this in the git repo the person names, or the one that holds the current directory. Each run converges the repo on the standard. A run on a repo that is already up to date changes nothing, opens no PR and reports "already up to date".
 
-The repo takes no dependency on catati/dev. This skill fetches the standard, runs `catati setup` from that copy, removes the old pin wiring, does the `CLAUDE.md` judgment steps, checks the repo's GitHub settings, and opens one PR.
+The repo takes no dependency on catati/dev. This skill fetches the standard, runs `catati setup` from that copy, does the `CLAUDE.md` judgment steps, checks the repo's GitHub settings, and opens one PR.
 
 ## 1. Fetch the standard
 
@@ -38,17 +38,6 @@ Run `node <standard>/bin/catati.mjs setup` from the repo root and keep its stdou
 - The finding lines after the file lines are what `catati check` still finds. Setup does not change the `Makefile`, the CI workflows or the Biome and tsconfig bases, so those findings stay for the repo's own PR.
 
 Setup exits 0 when it ran. Any other exit code means it did not run, such as 2 when it cannot read the repo or 1 when Node cannot load the CLI. Stop and report the exit code and the last stderr line.
-
-## 3b. Remove the old pin
-
-An older run pinned catati/dev as a package. Remove each part of that wiring the repo still has, and list each removal in the report.
-
-1. **The dev dependency.** Remove an `@catati/dev` or `catati-dev` key from the root `package.json`, with the package manager the repo's lockfile names: `pnpm remove -D <key>` (add `-w` when `pnpm-workspace.yaml` exists) or `npm uninstall -D <key>`. That also removes its lockfile entries, such as a `git+https://github.com/catati/dev.git#<sha>` resolution. Then `git grep -n 'catati/dev' -- package.json pnpm-lock.yaml package-lock.json` prints nothing.
-2. **`catati check` in the gate.** Remove a `catati check` call from the `Makefile` `verify` target, a package script or a CI step, such as `npx catati check` or `$(PNPM) exec catati check`. Remove only the call, and keep the rest of the target or script.
-3. **Lines that name the old wiring.** Run `git grep -n -e 'catati check' -e '@catati/dev'` from the repo root. It also finds `node_modules/@catati/dev/` paths. For each line it prints:
-   - When the line names wiring this step removed and holds no other rule, such as a `make help` line or a doc sentence that lists `catati check` among the steps of `make verify`, drop that part, or the whole line when nothing true is left. A path under `node_modules/@catati/dev/` becomes the same path under `https://github.com/catati/dev/blob/main/`.
-   - When the line is still true as it stands, such as one that says a `/catati:repo-setup` run checks a rule, leave it.
-   - Leave every other line, such as a rule that relies on the removed wiring. List it in the report as a follow-up, with its path and line number.
 
 ## 4. `CLAUDE.md`
 
@@ -86,13 +75,12 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
 
 Reply with:
 
-- the standard's SHA, and each part of the old pin the run removed;
+- the standard's SHA;
 - the setup output;
 - each skipped file and why a person must reconcile it;
 - each remaining `catati check` finding;
 - what changed in `CLAUDE.md`, and each kept rule-table row to link to its convention section;
 - each approver written with the operator's name for it, and each line still without an approver;
-- each line from step 3b.3 rewritten or left as a follow-up;
 - each label created, each repo setting that differs from the conventions, and each read that failed;
 - each door path the PR changes, and who merges;
 - the PR URL, "already up to date" when the run changed nothing, or each check that stopped the push in step 5.3.
