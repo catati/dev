@@ -24,13 +24,20 @@ test('the plugin has no top-level bin directory, which claude.ai rejects', () =>
 
 test('each skill names its own folder and has a description', () => {
 	const skills = join(pluginRoot, 'skills');
-	const names = readdirSync(skills);
-	assert.deepEqual(names, ['repo-setup']);
+	const names = readdirSync(skills).sort();
+	assert.deepEqual(names, ['project-setup', 'repo-setup']);
 	for (const name of names) {
 		const frontmatter = readFileSync(join(skills, name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
 		assert.match(frontmatter, new RegExp(`^name: ${name}$`, 'm'));
 		assert.match(frontmatter, /^description: \S/m);
 	}
+});
+
+test('project-setup calls itself by its plugin name, because routines load it from the plugin', () => {
+	const skill = readFileSync(join(pluginRoot, 'skills', 'project-setup', 'SKILL.md'), 'utf8');
+	assert.doesNotMatch(skill, /(?<![\w:])\/?project-setup with args|(?<![\w:])\/project-setup\b/);
+	assert.match(skill, /`Start: use the Skill tool to run catati:project-setup with args "start"/);
+	assert.match(skill, /`End: use the Skill tool to run catati:project-setup with args "end <kind>"/);
 });
 
 const hooks = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8')).hooks;

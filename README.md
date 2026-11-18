@@ -8,7 +8,7 @@ The repo has four parts:
 | --- | --- | --- |
 | Conventions | [`conventions/`](conventions/) | The rules every Catati repo follows: names, branches, deploys, CI, issues, merges and specs. |
 | `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` finds where a repo breaks the rules. `catati setup` writes the files every repo carries. |
-| `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` skill and the session hooks. |
+| `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` and `/catati:project-setup` skills and the session hooks. |
 | Cloud environment | [`env/`](env/) | The `dev` environment on claude.ai/code, as files. |
 
 ## Get started
@@ -66,7 +66,7 @@ The environment form on claude.ai/code has no API, so each field is a file here.
 3. Start a new cloud session.
 4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Expect Node `v24.15` or later.
 5. Check that `~/.claude/rules/pstack-models.md` exists.
-6. Check that the session lists `/pstack:poteto-mode` and `/catati:repo-setup`.
+6. Check that the session lists `/pstack:poteto-mode`, `/catati:repo-setup` and `/catati:project-setup`.
 7. Run the install step of the repo in the session. [Repos in the environment](#repos-in-the-environment) names each install step.
 
 ### Release a change to catati/dev
@@ -226,6 +226,7 @@ A synced plugin holds only its own folder, so the skill cannot run the repo's `b
 | Part | What it does |
 | --- | --- |
 | [`/catati:repo-setup`](plugins/catati/skills/repo-setup/SKILL.md) | Clones catati/dev `main` and runs `catati setup` from it in the target repo. Adds the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
+| [`/catati:project-setup`](plugins/catati/skills/project-setup/SKILL.md) | Sets up a claude.ai project's Focus stream and its SOD, Hourly and EOD routines, and holds the start, end and sync steps each routine calls. The EOD sync backs up and tidies the project's memory. |
 | SessionStart hook [`session-start.mjs`](plugins/catati/hooks/session-start.mjs) | Installs `~/.claude/rules/pstack-models.md` when it is missing. Where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it. It acts in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the current directory), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
 | WorktreeCreate and WorktreeRemove hook [`worktree.mjs`](plugins/catati/hooks/worktree.mjs) | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. See [Worktree subagents](#worktree-subagents). |
 
