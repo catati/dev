@@ -104,6 +104,6 @@ Each row names the open issue that tracks its end. A row with no open issue fail
 
 | Name | Rule it breaks | Ends when | Issue |
 | --- | --- | --- | --- |
-| `cat-hotel` `app` and `landing` keep `workers_dev` on in `env.prod` | A prod Worker serves only on the prod domain. | `.github/scripts/prod-hosts.mjs` no longer reaches the API through landing's workers.dev host when Bot Fight Mode challenges the runner. | ISSUE_TBD |
+| `cat-hotel` `app` and `landing` keep `workers_dev` on in `env.prod` | A prod Worker serves only on the prod domain. | `.github/scripts/prod-hosts.mjs` no longer reaches the API through landing's workers.dev host when Bot Fight Mode challenges the runner. | [cat-hotel#634](https://github.com/catati/cat-hotel/issues/634) |
 | Old `cat-hotel` dev resources in the prod account | The prod account holds prod resources only. | They are deleted. | [cat-hotel#245](https://github.com/catati/cat-hotel/issues/245) |
 | Catsper dev resources in the prod account: D1 `catsper-dev`, R2 `catsper-dev-photos` and Queues `catsper-dev-cat-deletions` and `catsper-dev-home-deletions` | The prod account holds prod resources only. | They are deleted. Dev already runs in `catati-dev`. | [dev#107](https://github.com/catati/dev/issues/107) |
