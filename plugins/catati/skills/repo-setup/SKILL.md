@@ -73,7 +73,7 @@ Make each call a plain `gh api <path>`, one per command, with no pipe or loop, s
 
 1. Run `git status`. With no change, skip to the report and report "already up to date".
 2. Commit the changed files, including `package.json` and the lockfile. The repo's git hooks run. Fix what they flag in the files this run changed.
-3. Push the work branch. If the pre-push hook refuses, fix what it flags in the files this run changed, commit, and push again. A repo check that asks for a version bump, such as cat-hotel's `versionBumpMissing` after an approver lands in `api/wrangler.jsonc`, is an example: raise the version as the repo's `CLAUDE.md` says. Never skip a hook, and never push the base branch.
+3. Push the work branch. If the pre-push hook refuses, fix what it flags in the files this run changed, commit, and push again. Never raise `version` to satisfy a check, because only a `release: X.Y.Z` PR changes it (catati/dev `conventions/naming.md`, Versions). Never skip a hook, and never push the base branch.
    - When a failure needs a file this run did not change, push no more and open no PR. List each failing check and its file in the report as a follow-up the repo's own PR fixes, and say the commit is on the local work branch only.
 4. If the work branch already has an open PR, update its body. Otherwise open one PR against the base branch. pstack decides its title, body and readiness (`playbooks/opening-a-pr.md` of the `poteto-mode` skill).
    - Issue: the PR always closes an issue in this repo. Use the issue that asked for this run. When none did, first open one in this repo from its `.github/ISSUE_TEMPLATE/issue.yml`, filling Card, What to build, Acceptance criteria and Blocked by. Title it `repo: Set the repo up to the catati/dev standard`.

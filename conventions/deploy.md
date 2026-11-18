@@ -72,6 +72,7 @@ A change moves through a PR, a merge to `main`, then a prod release. Each kind o
 | Rule | Check |
 | --- | --- |
 | Every `wrangler.jsonc` has `env.dev` and `env.prod`. Each sets `name` and the `account_id` of its account. The top level holds only shared keys. | `catati check`. Which account each `account_id` names, and the top-level keys, need judgment. |
+| `env.prod` sets `"workers_dev": false`, so a prod Worker serves only on the prod domain. If it sets `preview_urls`, that is `false` too. | `catati check` (`prod-workers-dev`) |
 | Every Wrangler command passes `--env`. | `catati check` for remote commands in `package.json` scripts, `Makefile`s and `builds.json`. Workflow steps need judgment. |
 | Terraform owns long-lived resources: D1, R2, queues and Turnstile. `wrangler.jsonc` owns Workers, bindings, vars, routes, crons, queue consumers and Workflows. `builds.json` owns Workers Builds triggers, one file per account. The dashboard holds secret values only. | judgment |
 | Plain vars live only in `wrangler.jsonc`, except `COMMIT`. A Worker that reads `COMMIT` gets it from its deploy command as `--var COMMIT:<sha>`. No Wrangler command passes `--keep-vars`. | `catati check` for `--keep-vars`. Where plain vars live needs judgment. |
@@ -103,6 +104,6 @@ Each row names the open issue that tracks its end. A row with no open issue fail
 
 | Name | Rule it breaks | Ends when | Issue |
 | --- | --- | --- | --- |
-| `cat-hotel` frontends' top-level prod config | The top level holds only shared keys. | Each frontend's prod config lives only in `env.prod`. | [cat-hotel#534](https://github.com/catati/cat-hotel/issues/534) |
+| `cat-hotel` `app` and `landing` keep `workers_dev` on in `env.prod` | A prod Worker serves only on the prod domain. | `.github/scripts/prod-hosts.mjs` no longer reaches the API through landing's workers.dev host when Bot Fight Mode challenges the runner. | ISSUE_TBD |
 | Old `cat-hotel` dev resources in the prod account | The prod account holds prod resources only. | They are deleted. | [cat-hotel#245](https://github.com/catati/cat-hotel/issues/245) |
 | Catsper dev resources in the prod account: D1 `catsper-dev`, R2 `catsper-dev-photos` and Queues `catsper-dev-cat-deletions` and `catsper-dev-home-deletions` | The prod account holds prod resources only. | They are deleted. Dev already runs in `catati-dev`. | [dev#107](https://github.com/catati/dev/issues/107) |

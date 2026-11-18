@@ -217,7 +217,7 @@ const cleanWrangler = [
 	'\t"vars": { "URL": "https://x.dev/a//b" },',
 	'\t"env": {',
 	'\t\t"dev": { "name": "repo-api", "account_id": "dev-account", },',
-	'\t\t"prod": { "name": "repo-api", "account_id": "prod-account" },',
+	'\t\t"prod": { "name": "repo-api", "account_id": "prod-account", "workers_dev": false },',
 	'\t},',
 	'}',
 	'',
@@ -402,7 +402,7 @@ test('resource-names flags a Wrangler resource that is not <repo>-<component> or
 			ratelimits: [{ name: 'SIGN_IN_LIMIT' }],
 			env: {
 				dev: { name: 'repo', account_id: 'a', d1_databases: [{ binding: 'DB', database_name: names[1] }] },
-				prod: { name: 'repo', account_id: 'b', queues: { consumers: [{ queue: names[2], dead_letter_queue: names[3] }] } },
+				prod: { name: 'repo', account_id: 'b', workers_dev: false, queues: { consumers: [{ queue: names[2], dead_letter_queue: names[3] }] } },
 			},
 		});
 	const clean = { ...cleanRepo(), Makefile: deployMakefile };
@@ -484,7 +484,7 @@ test('resource-names does not treat a Durable Object binding name as a resource'
 		workflows: [{ name: 'repo-booking', binding: 'BOOKING', class_name: 'Booking' }],
 		env: {
 			dev: { name: 'repo-api', account_id: 'a', durable_objects: { bindings: [{ name: 'rooms', class_name: 'Rooms' }] } },
-			prod: { name: 'repo-api', account_id: 'b' },
+			prod: { name: 'repo-api', account_id: 'b', workers_dev: false },
 		},
 	});
 	const files = { ...cleanRepo(), Makefile: deployMakefile, 'wrangler.jsonc': config };
@@ -534,7 +534,7 @@ test('resource-names reads only the resource name paths, at the top level and in
 			workflows: [{ name: names[2], binding: 'BOOKING', class_name: 'Booking' }],
 			env: {
 				dev: { name: 'repo-api', account_id: 'a', vars: { name: 'Catati Dev' }, workflows: [{ name: names[3], class_name: 'Booking' }] },
-				prod: { name: 'repo-api', account_id: 'b' },
+				prod: { name: 'repo-api', account_id: 'b', workers_dev: false },
 			},
 		});
 	const origin = 'https://github.com/catati/repo.git';
@@ -568,7 +568,7 @@ test('env-names skips a matrix list of environments', (t) => {
 
 test('resource-names reads development as an env suffix and preview as a component', (t) => {
 	const config = (name) =>
-		JSON.stringify({ name, env: { dev: { name, account_id: 'a' }, prod: { name, account_id: 'b' } } });
+		JSON.stringify({ name, env: { dev: { name, account_id: 'a' }, prod: { name, account_id: 'b', workers_dev: false } } });
 	const files = { ...cleanRepo(), Makefile: deployMakefile, 'wrangler.jsonc': config('repo-link-preview') };
 	const origin = 'https://github.com/catati/repo.git';
 	assert.deepEqual(runCheck(files, t, { origin }), { status: 0, lines: [] });
@@ -751,6 +751,74 @@ test('wrangler-envs reads & in a redirect as text, and env-names flags wrangler.
 		lines: [
 			'env-names: api/wrangler.preview.jsonc: path names environment preview; use dev or prod',
 			'wrangler-envs: package.json: wrangler deploy runs without --env: wrangler deploy',
+		],
+	});
+});
+
+test('prod-workers-dev flags an env.prod that leaves workers.dev or preview URLs on', (t) => {
+	const clean = { ...cleanRepo(), Makefile: deployMakefile, 'api/wrangler.jsonc': cleanWrangler };
+	const prod = (settings) => cleanWrangler.replace('"workers_dev": false', settings);
+	assert.deepEqual(runCheck({ ...clean, 'web/wrangler.jsonc': prod('"workers_dev": false, "preview_urls": false') }, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'api/wrangler.jsonc': prod('"preview_urls": false'),
+		'web/wrangler.jsonc': prod('"workers_dev": true, "preview_urls": true'),
+		'fixture/wrangler.jsonc': cleanWrangler.replace(/\t\t"prod".*\n/, ''),
+		'node_modules/dep/wrangler.jsonc': prod('"workers_dev": true'),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'wrangler-envs: fixture/wrangler.jsonc: no env.prod',
+			'prod-workers-dev: api/wrangler.jsonc: env.prod does not set "workers_dev": false',
+			'prod-workers-dev: web/wrangler.jsonc: env.prod does not set "workers_dev": false',
+			'prod-workers-dev: web/wrangler.jsonc: env.prod sets preview_urls to true; set it to false or leave it out',
+		],
+	});
+});
+
+test('a prod-workers-dev allow line turns off only that check', (t) => {
+	const allow = '// catati-allow(prod-workers-dev): a script reaches this host; expires 2999-01-01; approved by Shien';
+	const config = cleanWrangler.replace('"workers_dev": false', '"workers_dev": true').replace('// shared keys', allow);
+	const files = { ...cleanRepo(), Makefile: deployMakefile, 'api/wrangler.jsonc': config };
+	assert.deepEqual(runCheck(files, t), { status: 0, lines: [] });
+	assert.deepEqual(runCheck({ ...files, 'api/wrangler.jsonc': config.replace('"account_id": "dev-account", ', '') }, t), {
+		status: 1,
+		lines: ['wrangler-envs: api/wrangler.jsonc: env.dev has no account_id'],
+	});
+});
+
+test('action-pins flags each action or reusable workflow not pinned to a full commit SHA', (t) => {
+	const sha = 'd23441a48e516b6c34aea4fa41551a30e30af803';
+	const ci = [
+		'permissions:',
+		'  statuses: write',
+		'jobs:',
+		'  verify:',
+		'    steps:',
+		`      - uses: actions/checkout@${sha} # v6.1.0`,
+		`      - uses: "actions/setup-node@${sha.toUpperCase()}"`,
+		'      - uses: ./.github/actions/setup',
+		'      - uses: docker://alpine:3.20',
+		'',
+	].join('\n');
+	const action = `runs:\n  using: composite\n  steps:\n    - name: cache\n      uses: actions/cache@${sha}\n`;
+	const clean = { ...cleanRepo(), '.github/workflows/ci.yml': ci, '.github/actions/setup/action.yml': action, '.github/actions/setup/README.md': 'uses: x@v1\n' };
+	assert.deepEqual(runCheck(clean, t), { status: 0, lines: [] });
+	const files = {
+		...clean,
+		'.github/workflows/ci.yml': `${ci}      - uses: actions/checkout@v4\n      - uses: actions/checkout@v4\n      - uses: actions/cache@d23441a\n      - uses: actions/labeler\n`,
+		'.github/workflows/deploy.yml': 'jobs:\n  release:\n    uses: catati/dev/.github/workflows/x.yml@main\n',
+		'.github/actions/setup/action.yaml': action.replace(`@${sha}`, '@v6'),
+	};
+	assert.deepEqual(runCheck(files, t), {
+		status: 1,
+		lines: [
+			'action-pins: .github/actions/setup/action.yaml: uses actions/cache@v6, which is not pinned to a full commit SHA',
+			'action-pins: .github/workflows/ci.yml: uses actions/checkout@v4, which is not pinned to a full commit SHA',
+			'action-pins: .github/workflows/ci.yml: uses actions/cache@d23441a, which is not pinned to a full commit SHA',
+			'action-pins: .github/workflows/ci.yml: uses actions/labeler, which is not pinned to a full commit SHA',
+			'action-pins: .github/workflows/deploy.yml: uses catati/dev/.github/workflows/x.yml@main, which is not pinned to a full commit SHA',
 		],
 	});
 });
