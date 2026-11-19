@@ -14,6 +14,9 @@ const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true'
 function cleanRepo() {
 	return {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
+		'.github/workflows/verifier-record.yml': template('verifier-record/workflow.yml'),
+		'.github/verifier-record/verifier-record.mjs': template('verifier-record/verifier-record.mjs'),
+		'.github/verifier-record/doors.md': template('verifier-record/doors.md'),
 		'.github/workflows/ci.yml': 'on: push\n',
 		Makefile: cleanMakefile,
 		'package.json': '{ "version": "1.0.0" }\n',
@@ -203,7 +206,6 @@ test('a bad allow line in a file with no finding is still reported', (t) => {
 
 test('workflow-names flags a workflow that is not ci.yml, deploy.yml or verifier-record.yml', (t) => {
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': 'on: push\n' }, t), { status: 0, lines: [] });
-	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/verifier-record.yml': 'on: issue_comment\n' }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/apply-dev.yml': 'on: push\n' }, t), {
 		status: 1,
 		lines: ['workflow-names: .github/workflows/apply-dev.yml: workflow is not named ci.yml, deploy.yml or verifier-record.yml'],

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { OPERATOR, doors, main, merger, parseDoors, verdict } from '../lib/verifier-record.mjs';
+import { OPERATOR, doors, main, merger, parseDoors, verdict } from '../templates/verifier-record/verifier-record.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const conventions = read('conventions/issues-and-prs.md');
-const list = parseDoors(conventions);
+const doorsFile = read('templates/verifier-record/doors.md');
+const list = parseDoors(doorsFile);
 const isDoor = (files, extra = {}) => doors({ files, list, ...extra }).length > 0;
 
 const head = 'a'.repeat(40);
@@ -43,18 +43,18 @@ test('the description names the head and who merges, within the 140 characters a
 	assert.equal(merger([]), ' · an agent merges');
 	assert.equal(merger([{ file: 'Makefile' }]), ' · the operator merges (Makefile)');
 	assert.equal(merger([{ file: 'Makefile' }, { file: '.github/a.yml' }]), ' · the operator merges (Makefile +1)');
-	assert.match(merger(undefined), /unreadable, see conventions\/issues-and-prs\.md/);
+	assert.match(merger(undefined), /unreadable, see \.github\/verifier-record\/doors\.md/);
 	const longest = [verdict(head, []).description + merger([{ file: 'x/'.repeat(200) }, { file: 'y' }]), verdict(head, []).description + merger(undefined)];
 	for (const description of longest) assert.ok(description.length <= 140, description);
 });
 
-test("the door list is read from this repo's conventions/issues-and-prs.md", () => {
+test('the door list is read from the doors.md next to the script', () => {
 	assert.ok(list.links, 'the symlink and submodule rule');
 	for (const pattern of ['.github/**', '**/package.json', 'env/setup.sh', 'templates/githooks/**', '**/wrangler.jsonc', 'firestore.indexes.json'])
 		assert.ok(list.patterns.includes(pattern), pattern);
 	assert.ok(!list.patterns.includes('pnpm-lock.yaml'), 'only the Path column is read');
-	assert.throws(() => parseDoors('# Nothing here\n'), /no ### One-way-door paths/);
-	assert.throws(() => parseDoors(conventions.replace('`optionalDependencies`', 'optional dependencies')), /update PACKAGE_FIELDS/, 'a changed package.json exception fails loudly');
+	assert.throws(() => parseDoors('# Nothing here\n'), /no \*\*\/package\.json row/);
+	assert.throws(() => parseDoors(doorsFile.replace('`optionalDependencies`', 'optional dependencies')), /update PACKAGE_FIELDS/, 'a changed package.json exception fails loudly');
 });
 
 test('a PR is a one-way door when a file matches a path on the list', () => {
@@ -124,15 +124,15 @@ test('main posts the record as the verifier-record status on the head', () => {
 test('main still posts the verdict when it cannot tell who merges', (t) => {
 	t.mock.method(console, 'error', () => {});
 	const { api, posted } = fakeApi({ head, tip: old, base: old, files: ['package.json'], packages: {}, comments: [] });
-	assert.equal(main({ REPO: 'catati/x', PR: '7' }, api).description, 'No VERIFIER PASS names aaaaaaa · door list unreadable, see conventions/issues-and-prs.md');
+	assert.equal(main({ REPO: 'catati/x', PR: '7' }, api).description, 'No VERIFIER PASS names aaaaaaa · door list unreadable, see .github/verifier-record/doors.md');
 	assert.equal(posted.length, 1);
 });
 
-test('the workflow runs only catati/dev code at its own commit, never the PR head', () => {
-	const workflow = read('.github/workflows/verifier-record.yml');
-	for (const trigger of ['pull_request_target', 'issue_comment', 'workflow_call']) assert.match(workflow, new RegExp(`^ {2}${trigger}:$`, 'm'), trigger);
-	assert.deepEqual([...workflow.matchAll(/^\s+ref: (.*)$/gm)].map((match) => match[1]), ['${{ job.workflow_sha }}']);
-	assert.match(workflow, /^\s+repository: \$\{\{ job\.workflow_repository \}\}$/m);
+test("the workflow runs the repo's own copy of the script from its default branch, never the PR head", () => {
+	const workflow = read('templates/verifier-record/workflow.yml');
+	const on = /^on:\n((?: .*\n)*)/m.exec(workflow)[1];
+	assert.deepEqual([...on.matchAll(/^ {2}(\w+):/gm)].map((match) => match[1]), ['pull_request_target', 'issue_comment']);
+	assert.doesNotMatch(workflow, /^\s+(?:ref|repository):/m, 'checkout takes the default ref of the event');
 	assert.match(workflow, /^\s+persist-credentials: false$/m);
-	assert.match(workflow, /^\s+run: node lib\/verifier-record\.mjs$/m);
+	assert.match(workflow, /^\s+run: node \.github\/verifier-record\/verifier-record\.mjs$/m);
 });
