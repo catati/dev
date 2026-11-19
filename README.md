@@ -81,6 +81,8 @@ The environment form on claude.ai/code has no API, so each field has a source fi
 2. If the PR changes the plugin, raise `version` in both `package.json` and `plugins/catati/.claude-plugin/plugin.json`. Sessions pick up a plugin change only when its version changes. `npm test` fails when the two versions differ.
 3. Run `make verify`. It runs `npm test`, then `catati check` on catati/dev itself. CI runs the same target on every PR and on each push to `main`.
 
+The `check` ruleset requires two checks before a PR merges. They are the `verify` job in `ci.yml` and the [`verifier-record` status](#check-the-verifier-record-in-ci). The `record` job in `.github/workflows/verifier-record.yml` posts that status. Four more checks run on every PR, and the ruleset requires none of them. The `record` job reports its own `record` check. CodeQL default setup runs `CodeQL`, `Analyze (actions)` and `Analyze (javascript-typescript)`.
+
 ## How catati/dev and pstack split the work
 
 pstack decides how an agent plans, builds, verifies, opens a PR and merges. catati/dev decides what a Catati repo looks like, so that those steps work the same way in every repo. That covers names, the `make verify` gate, the git hooks, the deploy paths and who may change prod.
