@@ -8,7 +8,7 @@ catati/dev sets the standard that every Catati repo follows, and holds the tools
 | --- | --- | --- | --- |
 | Conventions | [`conventions/`](conventions/) | The rules for names, branches, deploys, CI, issues, merges, specs and tests. | [Conventions](#conventions) |
 | `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` lists where a repo breaks the rules. `catati setup` writes the files every repo carries. | [`docs/cli.md`](docs/cli.md) |
-| `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` skill and the session hooks. | [`docs/plugin.md`](docs/plugin.md) |
+| `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` and `/catati:project-setup` skills and the session hooks. | [`docs/plugin.md`](docs/plugin.md) |
 | Cloud environment | [`env/`](env/) | The `dev` environment on claude.ai/code, kept as files. | [`docs/cloud-environment.md`](docs/cloud-environment.md) |
 
 ## Common tasks
@@ -63,7 +63,7 @@ The environment form on claude.ai/code has no API, so each field has a source fi
 3. Start a new cloud session.
 4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Node must be `v24.15` or later.
 5. Check that `~/.claude/rules/pstack-models.md` exists.
-6. Check that the session lists `/pstack:poteto-mode` and `/catati:repo-setup`.
+6. Check that the session lists `/pstack:poteto-mode`, `/catati:repo-setup` and `/catati:project-setup`.
 7. Run the repo's install step. [Repos in the environment](docs/cloud-environment.md#repos-in-the-environment) lists each one.
 
 ### Release a change to catati/dev
