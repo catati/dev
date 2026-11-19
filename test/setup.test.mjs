@@ -13,6 +13,9 @@ const managed = {
 	'.githooks/pre-commit': 'githooks/pre-commit',
 	'.githooks/pre-push': 'githooks/pre-push',
 	'.node-version': 'node-version',
+	'.github/workflows/verifier-record.yml': 'verifier-record/workflow.yml',
+	'.github/verifier-record/verifier-record.mjs': 'verifier-record/verifier-record.mjs',
+	'.github/verifier-record/doors.md': 'verifier-record/doors.md',
 };
 const paths = Object.keys(managed);
 const hooks = ['.githooks/pre-commit', '.githooks/pre-push'];
@@ -155,7 +158,7 @@ test('a managed path that is a symlink is left as is', (t) => {
 
 test('a managed directory that is a symlink out of the repo is skipped, and nothing outside changes', async (t) => {
 	const cases = {
-		'.github': ['.github/ISSUE_TEMPLATE/issue.yml', '.github/pull_request_template.md'],
+		'.github': [...paths.filter((path) => path.startsWith('.github/')), ...retired],
 		'.github/ISSUE_TEMPLATE': ['.github/ISSUE_TEMPLATE/issue.yml'],
 		'.githooks': ['.githooks/pre-commit', '.githooks/pre-push'],
 	};

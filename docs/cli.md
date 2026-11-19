@@ -18,7 +18,7 @@ node bin/catati.mjs check
 
 | Check | Fails when |
 | --- | --- |
-| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml` is missing or differs by a byte from `templates/`. |
+| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml`, `.github/workflows/verifier-record.yml`, or a file in `.github/verifier-record/` is missing or differs by a byte from its copy in `templates/`. |
 | `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint`, `help`, `format` or `staged-check` target, or no `deploy-dev` target in a repo with a `wrangler.jsonc`. The template git hooks call `make staged-check` before a commit and name `make format` when they refuse one. |
 | `version-source` | A repo with a `wrangler.jsonc` outside `node_modules/` has no root `package.json`, or its `version` is not `MAJOR.MINOR.PATCH`, such as `2.0.0` (no `v`, no leading zero, no pre-release). Or another `package.json` outside `node_modules/` declares a `version`. The root holds the one version the repo ships. A repo with no `wrangler.jsonc` skips this check. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
@@ -26,6 +26,7 @@ node bin/catati.mjs check
 | `env-names` | See [How `env-names` reads names](#how-env-names-reads-names). |
 | `secret-names` | A workflow reads `secrets.<NAME>` where a `_` token of the name is `DEV`, `PROD`, `PRODUCTION`, `DEVELOPMENT`, `STAGING` or `CATATI`. |
 | `action-pins` | A `uses:` in a `.yml` or `.yaml` file in `.github/workflows/`, or in an `action.yml` or `action.yaml` under `.github/actions/`, has a ref after `@` that is not a 40-character commit SHA, or has no ref. A trailing comment such as `# v4` is fine. Local actions (`./…`) and `docker://` images are skipped. Each value is reported once per file. |
+| `dev-dependency` | A `uses:` in the same files names `catati/dev`, such as a call to its workflows. A repo carries its own copy of the standard's files, which `catati setup` writes. |
 | `wrangler-envs` | A `wrangler.jsonc` lacks `env.dev` or `env.prod`, each with a string `name` and `account_id`. Or a command runs a remote Wrangler command without `--env` or `-e`, or runs `wrangler pages deploy` without `--branch`. See [How `wrangler-envs` reads commands](#how-wrangler-envs-reads-commands). Any command that passes `--keep-vars` is also a finding. |
 | `prod-workers-dev` | The `env.prod` of a `wrangler.jsonc` outside `node_modules/` does not set `"workers_dev": false`, or sets `preview_urls` to anything but `false`. A file with no `env.prod` is a `wrangler-envs` finding, so this check skips it. Its own name lets a repo allow a prod workers.dev host without turning off `wrangler-envs`. |
 | `resource-names` | A resource name in a `wrangler.jsonc`, at the top level or in an `env.<name>`, is not `<repo>` or `<repo>-<component>`, or ends in `-dev`, `-prod`, `-production`, `-development` or `-staging`. `<repo>` is the last part of the `origin` remote URL, without `.git`. A repo with no `origin` remote skips this check. Resource names are `name`, `d1_databases[].database_name`, `r2_buckets[].bucket_name`, `queues.producers[].queue`, `queues.consumers[].queue` and `dead_letter_queue`, and `workflows[].name`. No other key is read, so `vars`, `ratelimits`, `send_email` and `durable_objects` bindings pass. |
@@ -90,6 +91,8 @@ node bin/catati.mjs setup [--dry-run]
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/` and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
+| `.github/workflows/verifier-record.yml` | Copies `templates/verifier-record/workflow.yml`. |
+| `.github/verifier-record/verifier-record.mjs`, `.github/verifier-record/doors.md` | Copies the script and the one-way-door list from `templates/verifier-record/`. The workflow runs the script, which reads `doors.md` next to itself. |
 | `.github/pull_request_template.md` | Deletes it, because catati/dev no longer manages it. |
 
 A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](../conventions/issues-and-prs.md#one-way-door-paths).

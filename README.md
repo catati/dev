@@ -10,7 +10,7 @@ catati/dev sets the standard that every Catati repo follows, and holds the tools
 | `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` lists where a repo breaks the rules. `catati setup` writes the files every repo carries. | [`docs/cli.md`](docs/cli.md) |
 | `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` and `/catati:project-setup` skills and the session hooks. | [`docs/plugin.md`](docs/plugin.md) |
 | Cloud environment | [`env/`](env/) | The `dev` environment on claude.ai/code, kept as files. | [`docs/cloud-environment.md`](docs/cloud-environment.md) |
-| Verifier record | [`.github/workflows/verifier-record.yml`](.github/workflows/verifier-record.yml), [`lib/verifier-record.mjs`](lib/verifier-record.mjs) | Posts the `verifier-record` status on a PR's head. It is green only when the latest `catati-ops` comment whose first line is `VERIFIER PASS <head>` or `VERIFIER FAIL <head>` is a PASS. Its description also says who merges, from the [one-way-door list](conventions/issues-and-prs.md#one-way-door-paths). | [Check the verifier record in CI](#check-the-verifier-record-in-ci) |
+| Verifier record | [`templates/verifier-record/`](templates/verifier-record/) | Posts the `verifier-record` status on a PR's head. It is green only when the latest `catati-ops` comment whose first line is `VERIFIER PASS <head>` or `VERIFIER FAIL <head>` is a PASS. Its description also says who merges, from the [one-way-door list](templates/verifier-record/doors.md). `catati setup` copies these files into each repo, catati/dev included. | [Check the verifier record in CI](#check-the-verifier-record-in-ci) |
 
 ## Common tasks
 
@@ -57,30 +57,11 @@ To turn off one check for one file until a date, add this line to the file:
 
 ### Check the verifier record in CI
 
-catati/dev runs its own `verifier-record.yml` on each of its PRs. Another repo calls it with this `.github/workflows/verifier-record.yml`:
+`/catati:repo-setup` copies three files from [`templates/verifier-record/`](templates/verifier-record/): the workflow to `.github/workflows/verifier-record.yml`, and the script and its door list to `.github/verifier-record/`. The workflow runs on `pull_request_target` and `issue_comment`. It checks out the repo's own default branch, never the PR head, and posts the `verifier-record` status on the PR's head. A new push turns the status red until a record names the new head.
 
-```yaml
-name: Verifier record
+The description also says who merges: `an agent merges`, `the operator merges (<path>)` when the PR changes a one-way-door path, with ` +N` when it changes N more, or `door list unreadable` when the script could not work out which changed paths are doors. That last one still posts the verdict, and the job log names the error.
 
-on:
-  pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
-  issue_comment:
-    types: [created, edited, deleted]
-
-permissions:
-  contents: read
-
-jobs:
-  record:
-    permissions:
-      contents: read
-      pull-requests: read
-      statuses: write
-    uses: catati/dev/.github/workflows/verifier-record.yml@<sha> # vX.Y.Z
-```
-
-`<sha>` is the full commit SHA of a catati/dev release, and the comment names its version. The called job checks out catati/dev at that commit, never the PR head, and runs `lib/verifier-record.mjs` from it. It reads the PR and posts the status through the API with the caller's token, so the caller grants exactly the three permissions above. A new push turns the status red until a record names the new head. The description also says who merges: `an agent merges`, `the operator merges (<path>)` when the PR changes a one-way-door path, with ` +N` when it changes N more, or `door list unreadable` when the script could not work out which changed paths are doors. That last one still posts the verdict, and the job log names the error. To make a merge need it, add `verifier-record` to the required status checks of the ruleset that guards `main`.
+To make a merge need it, add `verifier-record` to the required status checks of the ruleset that guards `main`. A repo calls no catati/dev workflow. `catati check` fails a `uses:` that names catati/dev (`dev-dependency`).
 
 ### Change the cloud environment
 

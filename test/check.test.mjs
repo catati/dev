@@ -14,6 +14,9 @@ const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true'
 function cleanRepo() {
 	return {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
+		'.github/workflows/verifier-record.yml': template('verifier-record/workflow.yml'),
+		'.github/verifier-record/verifier-record.mjs': template('verifier-record/verifier-record.mjs'),
+		'.github/verifier-record/doors.md': template('verifier-record/doors.md'),
 		'.github/workflows/ci.yml': 'on: push\n',
 		Makefile: cleanMakefile,
 		'package.json': '{ "version": "1.0.0" }\n',
@@ -203,7 +206,6 @@ test('a bad allow line in a file with no finding is still reported', (t) => {
 
 test('workflow-names flags a workflow that is not ci.yml, deploy.yml or verifier-record.yml', (t) => {
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': 'on: push\n' }, t), { status: 0, lines: [] });
-	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/verifier-record.yml': 'on: issue_comment\n' }, t), { status: 0, lines: [] });
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/apply-dev.yml': 'on: push\n' }, t), {
 		status: 1,
 		lines: ['workflow-names: .github/workflows/apply-dev.yml: workflow is not named ci.yml, deploy.yml or verifier-record.yml'],
@@ -808,7 +810,7 @@ test('action-pins flags each action or reusable workflow not pinned to a full co
 	const files = {
 		...clean,
 		'.github/workflows/ci.yml': `${ci}      - uses: actions/checkout@v4\n      - uses: actions/checkout@v4\n      - uses: actions/cache@d23441a\n      - uses: actions/labeler\n`,
-		'.github/workflows/deploy.yml': 'jobs:\n  release:\n    uses: catati/dev/.github/workflows/x.yml@main\n',
+		'.github/workflows/deploy.yml': 'jobs:\n  release:\n    uses: catati/shared/.github/workflows/x.yml@main\n',
 		'.github/actions/setup/action.yaml': action.replace(`@${sha}`, '@v6'),
 	};
 	assert.deepEqual(runCheck(files, t), {
@@ -818,7 +820,20 @@ test('action-pins flags each action or reusable workflow not pinned to a full co
 			'action-pins: .github/workflows/ci.yml: uses actions/checkout@v4, which is not pinned to a full commit SHA',
 			'action-pins: .github/workflows/ci.yml: uses actions/cache@d23441a, which is not pinned to a full commit SHA',
 			'action-pins: .github/workflows/ci.yml: uses actions/labeler, which is not pinned to a full commit SHA',
-			'action-pins: .github/workflows/deploy.yml: uses catati/dev/.github/workflows/x.yml@main, which is not pinned to a full commit SHA',
+			'action-pins: .github/workflows/deploy.yml: uses catati/shared/.github/workflows/x.yml@main, which is not pinned to a full commit SHA',
+		],
+	});
+});
+
+test('dev-dependency flags a workflow or action that uses catati/dev at runtime', (t) => {
+	const sha = 'a6b5e76c5d75d0c9954736870711c6d76207033b';
+	const caller = `jobs:\n  record:\n    uses: catati/dev/.github/workflows/verifier-record.yml@${sha} # v0.18.0\n`;
+	const action = `runs:\n  using: composite\n  steps:\n    - uses: Catati/Dev@${sha}\n    - uses: catati/devtools@${sha}\n`;
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': caller, '.github/actions/setup/action.yml': action }, t), {
+		status: 1,
+		lines: [
+			`dev-dependency: .github/actions/setup/action.yml: uses Catati/Dev@${sha}, which reads catati/dev at runtime`,
+			`dev-dependency: .github/workflows/deploy.yml: uses catati/dev/.github/workflows/verifier-record.yml@${sha}, which reads catati/dev at runtime`,
 		],
 	});
 });

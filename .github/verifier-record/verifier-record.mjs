@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export const OPERATOR = 'catati-ops';
 const CONTEXT = 'verifier-record';
-const DOORS_FILE = new URL('../conventions/issues-and-prs.md', import.meta.url);
+const DOORS_FILE = new URL('./doors.md', import.meta.url);
 
 const PACKAGE_FIELDS = ['version', 'dependencies', 'devDependencies', 'optionalDependencies', 'pnpm.overrides'];
 const LOCKFILE = 'pnpm-lock.yaml';
@@ -27,7 +27,7 @@ export function verdict(head, comments) {
 }
 
 export function merger(found) {
-	if (!found) return ' · door list unreadable, see conventions/issues-and-prs.md';
+	if (!found) return ' · door list unreadable, see .github/verifier-record/doors.md';
 	if (!found.length) return ' · an agent merges';
 	const [first, ...rest] = found.map((door) => door.file);
 	const name = first.length > 60 ? `…${first.slice(-59)}` : first;
@@ -35,14 +35,12 @@ export function merger(found) {
 }
 
 export function parseDoors(markdown) {
-	const section = /^### One-way-door paths\n([\s\S]*?)(?=^#{1,3} )/m.exec(`${markdown}\n# end`);
-	if (!section) throw new Error('no ### One-way-door paths section');
-	const rows = section[1].split('\n').filter((line) => /^\| `/.test(line));
+	const rows = markdown.split('\n').filter((line) => /^\| `/.test(line));
 	const patterns = rows.flatMap((row) => [...row.split('|')[1].matchAll(/`([^`]+)`/g)].map((match) => match[1]));
 	const packageRow = rows.find((row) => row.startsWith('| `**/package.json`'));
 	if (!packageRow) throw new Error('the list has no **/package.json row');
 	const missing = [...PACKAGE_FIELDS, LOCKFILE].filter((field) => !packageRow.includes(`\`${field}\``));
-	if (missing.length) throw new Error(`the **/package.json exception no longer names ${missing.join(', ')}; update PACKAGE_FIELDS in lib/verifier-record.mjs`);
+	if (missing.length) throw new Error(`the **/package.json exception no longer names ${missing.join(', ')}; update PACKAGE_FIELDS in templates/verifier-record/verifier-record.mjs`);
 	if (patterns.length < 10) throw new Error(`only ${patterns.length} paths parsed`);
 	return { patterns, links: rows.some((row) => row.includes(LINK)) };
 }

@@ -45,7 +45,7 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 | --- | --- | --- |
 | The CI workflow file is `.github/workflows/ci.yml`. | `ci.yml`, not `checks.yml`. | `catati check` |
 | The deploy workflow file is `.github/workflows/deploy.yml`. | `deploy.yml`, not `deploy-firebase.yml`. | `catati check` |
-| A repo's only workflow files are `.github/workflows/ci.yml`, `deploy.yml` and, when the repo checks its [verifier record](issues-and-prs.md#merges) in CI, `verifier-record.yml`. That check runs on `pull_request_target` and `issue_comment` with a write token, so it never shares a file with jobs that check out PR code. | `plan.yml` and `apply-dev.yml` move into `ci.yml` and `deploy.yml`. | `catati check` |
+| A repo's only workflow files are `.github/workflows/ci.yml`, `deploy.yml` and `verifier-record.yml`, which `catati setup` copies to check the [verifier record](issues-and-prs.md#merges). That check runs on `pull_request_target` and `issue_comment` with a write token, so it never shares a file with jobs that check out PR code. | `plan.yml` and `apply-dev.yml` move into `ci.yml` and `deploy.yml`. | `catati check` |
 | A deploy job is `<action>-<env>`. | `plan-dev`, `apply-prod`, `deploy-prod` | judgment |
 | CI has one check named `verify`. | `agents` reports one `verify` check. | judgment |
 | A monorepo has one check per package, named `<package>-verify`. | The `cat-hotel` admin check is `admin-verify`, not `admin/verify`. | judgment |
@@ -61,9 +61,9 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| A repo takes no dependency on `catati/dev`, except a `verifier-record.yml` that calls catati/dev's `verifier-record.yml` at a full commit SHA. Each `/catati:repo-setup` run fetches `catati/dev` `main` and runs `catati setup` from that copy. | No `@catati/dev` or `catati-dev` key in `package.json`. | judgment |
+| A repo takes no dependency on `catati/dev`. Each `/catati:repo-setup` run fetches `catati/dev` `main` and runs `catati setup` from that copy, which writes the standard's files into the repo. | No `@catati/dev` or `catati-dev` key in `package.json`, and no `uses: catati/dev/…` in a workflow. | `catati check` (`dev-dependency`), and judgment |
 | Code moves into `catati/dev` only when two or more repos need it unchanged. | A script that one repo uses stays in that repo. | judgment |
-| `catati/dev` has no bot or sync job, and one reusable workflow, `verifier-record.yml` (operator, 2026-11-19). A caller pins it to a full commit SHA, so a change reaches a repo only through that repo's own PR. | A repo gets the standard's files from a `/catati:repo-setup` run. | judgment, and `catati check` (`action-pins`) for the pin |
+| `catati/dev` has no bot, sync job or reusable workflow (operator, 2026-11-19). A change reaches a repo only through that repo's own `/catati:repo-setup` PR. | A repo gets `verifier-record.yml` as a copy from a `/catati:repo-setup` run. | `catati check` (`dev-dependency`), and judgment |
 
 ## Titles and labels
 
