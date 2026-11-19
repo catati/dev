@@ -10,6 +10,7 @@ catati/dev sets the standard that every Catati repo follows, and holds the tools
 | `catati` CLI | [`bin/`](bin/), [`lib/`](lib/), [`templates/`](templates/) | `catati check` lists where a repo breaks the rules. `catati setup` writes the files every repo carries. | [`docs/cli.md`](docs/cli.md) |
 | `catati` plugin | [`plugins/catati/`](plugins/catati/) | A Claude Code plugin with the `/catati:repo-setup` skill and the session hooks. | [`docs/plugin.md`](docs/plugin.md) |
 | Cloud environment | [`env/`](env/) | The `dev` environment on claude.ai/code, kept as files. | [`docs/cloud-environment.md`](docs/cloud-environment.md) |
+| Verifier record | [`.github/workflows/verifier-record.yml`](.github/workflows/verifier-record.yml), [`lib/verifier-record.mjs`](lib/verifier-record.mjs) | Posts the `verifier-record` status on a PR's head. It is green only when the latest `catati-ops` comment whose first line is `VERIFIER PASS <head>` or `VERIFIER FAIL <head>` is a PASS. Its description also says who merges, from the [one-way-door list](conventions/issues-and-prs.md#one-way-door-paths). | [Check the verifier record in CI](#check-the-verifier-record-in-ci) |
 
 ## Common tasks
 
@@ -53,6 +54,33 @@ To turn off one check for one file until a date, add this line to the file:
 ```
 
 `<name>` is the person who approved the exception. A line with no approver is itself a finding. For JSON files and files that cannot hold a comment, see [Allow lines](docs/cli.md#allow-lines).
+
+### Check the verifier record in CI
+
+catati/dev runs its own `verifier-record.yml` on each of its PRs. Another repo calls it with this `.github/workflows/verifier-record.yml`:
+
+```yaml
+name: Verifier record
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    uses: catati/dev/.github/workflows/verifier-record.yml@<sha> # vX.Y.Z
+```
+
+`<sha>` is the full commit SHA of a catati/dev release, and the comment names its version. The called job checks out catati/dev at that commit, never the PR head, and runs `lib/verifier-record.mjs` from it. It reads the PR and posts the status through the API with the caller's token, so the caller grants exactly the three permissions above. A new push turns the status red until a record names the new head. To make a merge need it, add `verifier-record` to the required status checks of the ruleset that guards `main`.
 
 ### Change the cloud environment
 
