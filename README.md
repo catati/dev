@@ -57,7 +57,7 @@ To turn off one check for one file until a date, add this line to the file:
 
 ### Check the verifier record in CI
 
-`/catati:repo-setup` copies three files from [`templates/verifier-record/`](templates/verifier-record/): the workflow to `.github/workflows/verifier-record.yml`, and the script and its door list to `.github/verifier-record/`. The workflow runs on `pull_request_target` and `issue_comment`. It checks out the repo's own default branch, never the PR head, and posts the `verifier-record` status on the PR's head. A new push turns the status red until a record names the new head.
+`/catati:repo-setup` copies three files from [`templates/verifier-record/`](templates/verifier-record/): the workflow to `.github/workflows/verifier-record.yml`, and the script and its door list to `.github/verifier-record/`. The workflow runs on `pull_request_target`, and on `issue_comment` only when the comment's body starts with `VERIFIER `, or did before an edit, so other comments use no Actions minutes. It checks out the repo's own default branch, never the PR head, and posts the `verifier-record` status on the PR's head. A new push turns the status red until a record names the new head.
 
 The description also says who merges: `an agent merges`, `the operator merges (<path>)` when the PR changes a one-way-door path, with ` +N` when it changes N more, or `door list unreadable` when the script could not work out which changed paths are doors. That last one still posts the verdict, and the job log names the error.
 

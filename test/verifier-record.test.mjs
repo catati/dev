@@ -135,4 +135,7 @@ test("the workflow runs the repo's own copy of the script from its default branc
 	assert.doesNotMatch(workflow, /^\s+(?:ref|repository):/m, 'checkout takes the default ref of the event');
 	assert.match(workflow, /^\s+persist-credentials: false$/m);
 	assert.match(workflow, /^\s+run: node \.github\/verifier-record\/verifier-record\.mjs$/m);
+	const gate = /^\s+if: \$\{\{ (.*) \}\}$/m.exec(workflow)[1];
+	for (const field of ['github.event.comment.body', 'github.event.changes.body.from'])
+		assert.ok(gate.includes(`startsWith(${field}, 'VERIFIER ')`), `a comment starts the job only when ${field} is a record`);
 });
