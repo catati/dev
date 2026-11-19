@@ -80,7 +80,7 @@ jobs:
     uses: catati/dev/.github/workflows/verifier-record.yml@<sha> # vX.Y.Z
 ```
 
-`<sha>` is the full commit SHA of a catati/dev release, and the comment names its version. The called job checks out catati/dev at that commit, never the PR head, and runs `lib/verifier-record.mjs` from it. It reads the PR and posts the status through the API with the caller's token, so the caller grants exactly the three permissions above. A new push turns the status red until a record names the new head. To make a merge need it, add `verifier-record` to the required status checks of the ruleset that guards `main`.
+`<sha>` is the full commit SHA of a catati/dev release, and the comment names its version. The called job checks out catati/dev at that commit, never the PR head, and runs `lib/verifier-record.mjs` from it. It reads the PR and posts the status through the API with the caller's token, so the caller grants exactly the three permissions above. A new push turns the status red until a record names the new head. The description also says who merges: `an agent merges`, `the operator merges (<path>)` when the PR changes a one-way-door path, with ` +N` when it changes N more, or `door list unreadable` when the script could not work out which changed paths are doors. That last one still posts the verdict, and the job log names the error. To make a merge need it, add `verifier-record` to the required status checks of the ruleset that guards `main`.
 
 ### Change the cloud environment
 
