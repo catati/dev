@@ -810,7 +810,7 @@ test('action-pins flags each action or reusable workflow not pinned to a full co
 	const files = {
 		...clean,
 		'.github/workflows/ci.yml': `${ci}      - uses: actions/checkout@v4\n      - uses: actions/checkout@v4\n      - uses: actions/cache@d23441a\n      - uses: actions/labeler\n`,
-		'.github/workflows/deploy.yml': 'jobs:\n  release:\n    uses: catati/dev/.github/workflows/x.yml@main\n',
+		'.github/workflows/deploy.yml': 'jobs:\n  release:\n    uses: catati/shared/.github/workflows/x.yml@main\n',
 		'.github/actions/setup/action.yaml': action.replace(`@${sha}`, '@v6'),
 	};
 	assert.deepEqual(runCheck(files, t), {
@@ -820,7 +820,20 @@ test('action-pins flags each action or reusable workflow not pinned to a full co
 			'action-pins: .github/workflows/ci.yml: uses actions/checkout@v4, which is not pinned to a full commit SHA',
 			'action-pins: .github/workflows/ci.yml: uses actions/cache@d23441a, which is not pinned to a full commit SHA',
 			'action-pins: .github/workflows/ci.yml: uses actions/labeler, which is not pinned to a full commit SHA',
-			'action-pins: .github/workflows/deploy.yml: uses catati/dev/.github/workflows/x.yml@main, which is not pinned to a full commit SHA',
+			'action-pins: .github/workflows/deploy.yml: uses catati/shared/.github/workflows/x.yml@main, which is not pinned to a full commit SHA',
+		],
+	});
+});
+
+test('dev-dependency flags a workflow or action that uses catati/dev at runtime', (t) => {
+	const sha = 'a6b5e76c5d75d0c9954736870711c6d76207033b';
+	const caller = `jobs:\n  record:\n    uses: catati/dev/.github/workflows/verifier-record.yml@${sha} # v0.18.0\n`;
+	const action = `runs:\n  using: composite\n  steps:\n    - uses: Catati/Dev@${sha}\n    - uses: catati/devtools@${sha}\n`;
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/workflows/deploy.yml': caller, '.github/actions/setup/action.yml': action }, t), {
+		status: 1,
+		lines: [
+			`dev-dependency: .github/actions/setup/action.yml: uses Catati/Dev@${sha}, which reads catati/dev at runtime`,
+			`dev-dependency: .github/workflows/deploy.yml: uses catati/dev/.github/workflows/verifier-record.yml@${sha}, which reads catati/dev at runtime`,
 		],
 	});
 });
