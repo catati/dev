@@ -58,5 +58,5 @@ pstack decides who verifies a PR, when, and who posts the verifier record, as th
 
 ### One-way-door paths
 
-The operator merges a PR that adds, changes or removes a file at one of these paths. The list is the table in [`templates/verifier-record/doors.md`](../templates/verifier-record/doors.md). `catati setup` copies it into each repo, and the `verifier-record` status and catsper's `make door-check` read that copy to say who merges. A path list cannot prove that a change leaves prod alone, so a change that touches prod is the operator's to merge too, such as a deploy script that a `Makefile` target calls.
+The operator merges a PR that adds, changes or removes a file at one of these paths. The list is the table in [`templates/verifier-record/doors.md`](../templates/verifier-record/doors.md). `catati setup` copies it into each repo's `.github/verifier-record/`, and the `verifier-record` status reads that copy to say who merges. A path list cannot prove that a change leaves prod alone, so a change that touches prod is the operator's to merge too, such as a deploy script that a `Makefile` target calls.
 
