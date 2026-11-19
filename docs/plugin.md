@@ -9,6 +9,7 @@ A synced plugin holds only its own folder, so the skill cannot run this repo's `
 | Part | What it does |
 | --- | --- |
 | [`/catati:repo-setup`](../plugins/catati/skills/repo-setup/SKILL.md) | Clones catati/dev `main` and runs `catati setup` from it in the target repo. Adds the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
+| [`/catati:project-setup`](../plugins/catati/skills/project-setup/SKILL.md) | Sets up a claude.ai project's Focus stream and its SOD, Hourly and EOD routines, and holds the start, end and sync steps each routine calls. The EOD sync backs up and tidies the project's memory. |
 | SessionStart hook [`session-start.mjs`](../plugins/catati/hooks/session-start.mjs) | Installs `~/.claude/rules/pstack-models.md` when it is missing. Where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it. It acts in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the current directory), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
 | WorktreeCreate and WorktreeRemove hook [`worktree.mjs`](../plugins/catati/hooks/worktree.mjs) | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. See [Worktree subagents](#worktree-subagents). |
 
