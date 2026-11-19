@@ -58,7 +58,7 @@ pstack decides who verifies a PR, when, and who posts the verifier record, as th
 
 ### One-way-door paths
 
-The operator merges a PR that adds, changes or removes a file at one of these paths. No tool reads this list. A path list cannot prove that a change leaves prod alone, so a change that touches prod is the operator's to merge too, such as a deploy script that a `Makefile` target calls.
+The operator merges a PR that adds, changes or removes a file at one of these paths. The `verifier-record` status and catsper's `make door-check` read this list to say who merges, so keep its table shape. A path list cannot prove that a change leaves prod alone, so a change that touches prod is the operator's to merge too, such as a deploy script that a `Makefile` target calls.
 
 | Path | Why it is a one-way door |
 | --- | --- |
