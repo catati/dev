@@ -91,6 +91,8 @@ node bin/catati.mjs setup [--dry-run]
 | `.github/ISSUE_TEMPLATE/issue.yml` | Copies `templates/issue.yml`. |
 | `.githooks/pre-commit`, `.githooks/pre-push` | Copies `templates/githooks/` and sets the exec bit. |
 | `.node-version` | Copies `templates/node-version`, which holds `24`. Repo CI reads it through `node-version-file`. |
+| `.github/workflows/verifier-record.yml` | Copies `templates/verifier-record/workflow.yml`. |
+| `.github/verifier-record/verifier-record.mjs`, `.github/verifier-record/doors.md` | Copies the script and the one-way-door list from `templates/verifier-record/`. The workflow runs the script, which reads `doors.md` next to itself. |
 | `.github/pull_request_template.md` | Deletes it, because catati/dev no longer manages it. |
 
 A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](../conventions/issues-and-prs.md#one-way-door-paths).
