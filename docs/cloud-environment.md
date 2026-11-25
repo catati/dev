@@ -13,7 +13,7 @@ The `dev` environment on claude.ai/code runs every cloud session for Catati repo
 
 **Network allowlist.** Never block a Catati domain, Google Fonts, Google Analytics, Cloudflare or Shopify. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and as `*.`. When a zone is added there, add it to the list and to `catatiZones` in [`test/network-allowlist.test.mjs`](../test/network-allowlist.test.mjs). A project thread can add only exact hosts to the cloud environment. A wildcard needs the operator in Project settings, so the thread gives the operator the whole paste-ready field in one message.
 
-**Setup script.** `env/setup.sh` installs Node 24, enables corepack, checks that uv is present and installs the Playwright system libraries. Before Claude starts, it also writes the pstack model rule to `~/.claude/rules/pstack-models.md` when that file is missing, so a session without the plugin still has the rule. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
+**Setup script.** `env/setup.sh` installs Node 24, enables corepack, checks that uv is present, installs the Playwright system libraries and installs agent-browser. Before Claude starts, it also writes the pstack model rule to `~/.claude/rules/pstack-models.md` when that file is missing, so a session without the plugin still has the rule. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
 
 **GitHub access.** Install the Claude GitHub App on the `catati` organization. Every repo in [Repos in the environment](#repos-in-the-environment) lives there.
 
@@ -33,7 +33,7 @@ This repo is public, so treat every committed value as public.
 
 ## What the environment provides and what each repo installs
 
-The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium.
+The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser, because the user's agent-browser skill drives it from any session, including a thread that opens in no repo. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens only hosts that the network allowlist allows.
 
 Each repo declares every other tool it needs. Its own install step then sets the tool up the same way on a Mac, in CI and in the cloud.
 
@@ -45,7 +45,7 @@ Each repo declares every other tool it needs. Its own install step then sets the
 | Native binaries, such as `shfmt`, `shellcheck` and `gitleaks` | An install target that downloads a pinned version and checks its SHA-256. |
 | Playwright browsers | `playwright install chromium` in the install step. |
 
-Do not add a repo tool to `env/setup.sh`. Fix the repo instead. The one step in `env/setup.sh` that installs no runtime writes the pstack model rule. The rule belongs to the user, not to a repo, and the setup script is the only step that runs in every session.
+Do not add a repo tool to `env/setup.sh`. Fix the repo instead. Two steps in `env/setup.sh` install no runtime: one writes the pstack model rule and one installs agent-browser. Both belong to the user, not to a repo, and the setup script is the only step that runs in every session. Keep the agent-browser pin equal to catsper's `agent-browser` devDependency.
 
 ## Repos in the environment
 

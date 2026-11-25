@@ -35,3 +35,9 @@ test('the env/setup.sh rule step installs a missing rule once and keeps an exist
 	assert.deepEqual(snapshot(rulePath), own);
 	assert.deepEqual(readdirSync(join(home, '.claude', 'rules')), ['pstack-models.md']);
 });
+
+test('env/setup.sh installs agent-browser at an exact version', () => {
+	const installs = [...setupScript.matchAll(/^npm install -g agent-browser@(\S+)$/gm)].map((m) => m[1]);
+	assert.equal(installs.length, 1);
+	assert.match(installs[0], /^\d+\.\d+\.\d+$/);
+});

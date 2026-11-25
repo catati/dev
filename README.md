@@ -70,7 +70,7 @@ The environment form on claude.ai/code has no API, so each field has a source fi
 1. Change the files in `env/` in a PR.
 2. After the merge, paste each changed file into its field of the `dev` form. [The form fields](docs/cloud-environment.md#the-form-fields) lists the file for each field.
 3. Start a new cloud session.
-4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version` and `uv --version`. Node must be `v24.15` or later.
+4. In the new session, ask Claude to run `check-tools`, `node -v`, `corepack --version`, `uv --version` and `agent-browser open https://github.com && agent-browser snapshot -i`. Node must be `v24.15` or later, and the snapshot must list the page's links.
 5. Check that `~/.claude/rules/pstack-models.md` exists.
 6. Check that the session lists `/pstack:poteto-mode`, `/catati:repo-setup` and `/catati:project-setup`.
 7. Run the repo's install step. [Repos in the environment](docs/cloud-environment.md#repos-in-the-environment) lists each one.
