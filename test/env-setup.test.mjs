@@ -37,7 +37,8 @@ test('the env/setup.sh rule step installs a missing rule once and keeps an exist
 });
 
 test('env/setup.sh installs agent-browser at an exact version', () => {
-	const installs = [...setupScript.matchAll(/^npm install -g agent-browser@(\S+)$/gm)].map((m) => m[1]);
-	assert.equal(installs.length, 1);
+	const installs = [...setupScript.matchAll(/^npm install -g .*\bagent-browser@(\S+)/gm)].map((m) => m[1]);
+	assert.equal(installs.length, 1, 'env/setup.sh installs agent-browser exactly once');
 	assert.match(installs[0], /^\d+\.\d+\.\d+$/);
+	assert.match(setupScript, /^agent-browser --version$/m, 'the install step runs agent-browser once to link and check it');
 });

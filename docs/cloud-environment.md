@@ -33,7 +33,7 @@ This repo is public, so treat every committed value as public.
 
 ## What the environment provides and what each repo installs
 
-The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser, because the user's agent-browser skill drives it from any session, including a thread that opens in no repo. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens only hosts that the network allowlist allows.
+The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser, because the user's agent-browser skill (in `catati/.claude`) drives it from any session, including a thread that opens in no repo. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens only hosts that the network allowlist allows.
 
 Each repo declares every other tool it needs. Its own install step then sets the tool up the same way on a Mac, in CI and in the cloud.
 
@@ -45,7 +45,7 @@ Each repo declares every other tool it needs. Its own install step then sets the
 | Native binaries, such as `shfmt`, `shellcheck` and `gitleaks` | An install target that downloads a pinned version and checks its SHA-256. |
 | Playwright browsers | `playwright install chromium` in the install step. |
 
-Do not add a repo tool to `env/setup.sh`. Fix the repo instead. Two steps in `env/setup.sh` install no runtime: one writes the pstack model rule and one installs agent-browser. Both belong to the user, not to a repo, and the setup script is the only step that runs in every session. Keep the agent-browser pin equal to catsper's `agent-browser` devDependency.
+Do not add a repo tool to `env/setup.sh`. Fix the repo instead. Two steps in `env/setup.sh` install no runtime: one writes the pstack model rule and one installs agent-browser. Both belong to the user, not to a repo, and the setup script is the only step that runs in every session. The agent-browser pin follows catsper's `agent-browser` devDependency only so that a catsper session's local and global CLI behave alike. The step exists for threads that open in no repo, not for catsper.
 
 ## Repos in the environment
 
