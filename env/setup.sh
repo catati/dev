@@ -74,5 +74,13 @@ npx -y playwright@1.64.1 install-deps chromium
 npm install -g agent-browser@0.43.0
 # npm skips the postinstall, so the first run links the native binary. Fail setup loudly if it breaks.
 agent-browser --version
+# Claude loads ~/.claude/skills/ at start. Install the skill stub the package ships, so it matches
+# the CLI's version. The stub sends Claude to `agent-browser skills get core`. A skill the user already has wins.
+skills_dir="${HOME:-/root}/.claude/skills"
+if [ ! -e "$skills_dir/agent-browser" ]; then
+  mkdir -p "$skills_dir"
+  cp -R "$(npm root -g)/agent-browser/skills/agent-browser" "$skills_dir/agent-browser"
+fi
+test -s "$skills_dir/agent-browser/SKILL.md"
 
 echo "catati cloud setup: done"
