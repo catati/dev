@@ -14,6 +14,9 @@ const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true'
 function cleanRepo() {
 	return {
 		'.github/ISSUE_TEMPLATE/issue.yml': template('issue.yml'),
+		'.githooks/pre-commit': template('githooks/pre-commit'),
+		'.githooks/pre-push': template('githooks/pre-push'),
+		'.node-version': template('node-version'),
 		'.github/workflows/verifier-record.yml': template('verifier-record/workflow.yml'),
 		'.github/verifier-record/verifier-record.mjs': template('verifier-record/verifier-record.mjs'),
 		'.github/verifier-record/doors.md': template('verifier-record/doors.md'),
@@ -65,6 +68,10 @@ test('templates-equal flags a changed and a missing template', (t) => {
 	assert.deepEqual(runCheck({ ...cleanRepo(), '.github/ISSUE_TEMPLATE/issue.yml': undefined }, t), {
 		status: 1,
 		lines: ['templates-equal: .github/ISSUE_TEMPLATE/issue.yml: file is missing'],
+	});
+	assert.deepEqual(runCheck({ ...cleanRepo(), '.githooks/pre-push': undefined, '.node-version': '22\n' }, t), {
+		status: 1,
+		lines: ['templates-equal: .githooks/pre-push: file is missing', 'templates-equal: .node-version: differs from templates/node-version'],
 	});
 });
 

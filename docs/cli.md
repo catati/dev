@@ -18,7 +18,7 @@ node bin/catati.mjs check
 
 | Check | Fails when |
 | --- | --- |
-| `templates-equal` | `.github/ISSUE_TEMPLATE/issue.yml`, `.github/workflows/verifier-record.yml`, or a file in `.github/verifier-record/` is missing or differs by a byte from its copy in `templates/`. |
+| `templates-equal` | A file that `catati setup` copies, as [the `catati setup` table](#catati-setup) lists, is missing or differs by a byte from its copy in `templates/`. |
 | `make-targets` | The `Makefile` has no `install`, `test`, `e2e`, `verify`, `lint`, `help`, `format` or `staged-check` target, or no `deploy-dev` target in a repo with a `wrangler.jsonc`. The template git hooks call `make staged-check` before a commit and name `make format` when they refuse one. |
 | `version-source` | A repo with a `wrangler.jsonc` outside `node_modules/` has no root `package.json`, or its `version` is not `MAJOR.MINOR.PATCH`, such as `2.0.0` (no `v`, no leading zero, no pre-release). Or another `package.json` outside `node_modules/` declares a `version`. The root holds the one version the repo ships. A repo with no `wrangler.jsonc` skips this check. |
 | `ci-workflow` | `.github/workflows/ci.yml` is missing. |
