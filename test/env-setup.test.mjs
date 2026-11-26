@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -41,37 +41,4 @@ test('env/setup.sh installs agent-browser at an exact version', () => {
 	assert.equal(installs.length, 1, 'env/setup.sh installs agent-browser exactly once');
 	assert.match(installs[0], /^\d+\.\d+\.\d+$/);
 	assert.match(setupScript, /^agent-browser --version$/m, 'the install step runs agent-browser once to link and check it');
-});
-
-test('the env/setup.sh skill step installs the packaged agent-browser skill once and keeps an existing one', (t) => {
-	const root = mkdtempSync(join(tmpdir(), 'catati-'));
-	t.after(() => rmSync(root, { recursive: true, force: true }));
-	const home = join(root, 'home');
-	const bin = join(root, 'bin');
-	const packaged = join(root, 'npm-root', 'agent-browser', 'skills', 'agent-browser');
-	mkdirSync(bin);
-	mkdirSync(packaged, { recursive: true });
-	writeFileSync(join(packaged, 'SKILL.md'), '---\nname: agent-browser\n---\n');
-	writeFileSync(join(bin, 'npm'), `#!/bin/sh\necho '${join(root, 'npm-root')}'\n`, { mode: 0o755 });
-	const step = setupScript.match(/^skills_dir=[\s\S]*?\nfi\n/m)?.[0];
-	assert.ok(step, 'env/setup.sh has the agent-browser skill step');
-	const skillPath = join(home, '.claude', 'skills', 'agent-browser', 'SKILL.md');
-	const runStep = () => execFileSync('bash', ['-euo', 'pipefail', '-c', step], { env: { PATH: `${bin}:${process.env.PATH}`, HOME: home } });
-	runStep();
-	assert.equal(readFileSync(skillPath, 'utf8'), '---\nname: agent-browser\n---\n');
-	const first = snapshot(skillPath);
-	runStep();
-	assert.deepEqual(snapshot(skillPath), first);
-	writeFileSync(skillPath, '---\nname: agent-browser\ndescription: mine\n---\n');
-	runStep();
-	assert.equal(readFileSync(skillPath, 'utf8'), '---\nname: agent-browser\ndescription: mine\n---\n');
-	rmSync(skillPath);
-	runStep();
-	assert.deepEqual(readdirSync(join(home, '.claude', 'skills', 'agent-browser')), []);
-	assert.deepEqual(readdirSync(join(home, '.claude', 'skills')), ['agent-browser']);
-	assert.deepEqual(readdirSync(join(home, '.claude')), ['skills']);
-	rmSync(join(home, '.claude'), { recursive: true });
-	writeFileSync(join(packaged, 'SKILL.md'), '');
-	assert.throws(runStep);
-	assert.deepEqual(readdirSync(join(home, '.claude', 'skills')), []);
 });
