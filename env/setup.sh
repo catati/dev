@@ -76,11 +76,12 @@ npm install -g agent-browser@0.43.0
 agent-browser --version
 # Claude loads ~/.claude/skills/ at start. Install the skill stub the package ships, so it matches
 # the CLI's version. The stub sends Claude to `agent-browser skills get core`. A skill the user already has wins.
-# It stages the copy, then moves it into place, so an interrupted run leaves no partial skill.
+# It stages the copy beside skills/, never inside it where Claude would load a leftover, then moves
+# it into place, so an interrupted run leaves no partial skill.
 skills_dir="${HOME:-/root}/.claude/skills"
 if [ ! -e "$skills_dir/agent-browser" ]; then
   mkdir -p "$skills_dir"
-  staged="$(mktemp -d "$skills_dir/.agent-browser.XXXXXX")"
+  staged="$(mktemp -d "$skills_dir/../.agent-browser-skill.XXXXXX")"
   cp -R "$(npm root -g)/agent-browser/skills/agent-browser/." "$staged"
   test -s "$staged/SKILL.md"
   chmod 755 "$staged"

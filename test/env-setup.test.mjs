@@ -69,4 +69,9 @@ test('the env/setup.sh skill step installs the packaged agent-browser skill once
 	runStep();
 	assert.deepEqual(readdirSync(join(home, '.claude', 'skills', 'agent-browser')), []);
 	assert.deepEqual(readdirSync(join(home, '.claude', 'skills')), ['agent-browser']);
+	assert.deepEqual(readdirSync(join(home, '.claude')), ['skills']);
+	rmSync(join(home, '.claude'), { recursive: true });
+	writeFileSync(join(packaged, 'SKILL.md'), '');
+	assert.throws(runStep);
+	assert.deepEqual(readdirSync(join(home, '.claude', 'skills')), []);
 });
