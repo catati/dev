@@ -67,20 +67,24 @@ uv --version # fail setup loudly if the image stops shipping uv
 npx -y playwright@1.64.1 install-deps chromium
 
 # --- agent-browser ---------------------------------------------------------------
-# The user's agent-browser skill drives it from any session, and a thread that opens in no repo
-# runs no repo install. So, like the model rule, it is the user's tool, installed for every session.
+# The user drives agent-browser from any session, and a thread that opens in no repo runs no repo
+# install. So, like the model rule, the CLI and its skill are the user's, installed for every session.
 # It drives the Chromium in the image's /opt/pw-browsers, so it downloads no browser.
-# Keep this pin equal to catsper's agent-browser devDependency.
+# The pin follows catsper's devDependency only so a catsper session's local and global CLI agree.
 npm install -g agent-browser@0.43.0
 # npm skips the postinstall, so the first run links the native binary. Fail setup loudly if it breaks.
 agent-browser --version
 # Claude loads ~/.claude/skills/ at start. Install the skill stub the package ships, so it matches
 # the CLI's version. The stub sends Claude to `agent-browser skills get core`. A skill the user already has wins.
+# It stages the copy, then moves it into place, so an interrupted run leaves no partial skill.
 skills_dir="${HOME:-/root}/.claude/skills"
 if [ ! -e "$skills_dir/agent-browser" ]; then
   mkdir -p "$skills_dir"
-  cp -R "$(npm root -g)/agent-browser/skills/agent-browser" "$skills_dir/agent-browser"
+  staged="$(mktemp -d "$skills_dir/.agent-browser.XXXXXX")"
+  cp -R "$(npm root -g)/agent-browser/skills/agent-browser/." "$staged"
+  test -s "$staged/SKILL.md"
+  chmod 755 "$staged"
+  mv -T "$staged" "$skills_dir/agent-browser"
 fi
-test -s "$skills_dir/agent-browser/SKILL.md"
 
 echo "catati cloud setup: done"

@@ -33,7 +33,7 @@ This repo is public, so treat every committed value as public.
 
 ## What the environment provides and what each repo installs
 
-The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser and its skill, because the user drives it from any session, including a thread that opens in no repo. The skill is the stub from the installed package (the user keeps a copy of the same stub in `catati/.claude`), so it always matches the CLI's version and sends Claude to `agent-browser skills get core`. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens only hosts that the network allowlist allows.
+The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser and its skill, because the user drives it from any session, including a thread that opens in no repo. The skill is the stub from the installed package (the user keeps a copy of the same stub in `catati/.claude`), so it matches the CLI's version and sends Claude to `agent-browser skills get core`. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens only hosts that the network allowlist allows.
 
 Each repo declares every other tool it needs. Its own install step then sets the tool up the same way on a Mac, in CI and in the cloud.
 
