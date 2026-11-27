@@ -1,9 +1,12 @@
 import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
+import { sharedAskRules } from '../hooks/ask-rules.mjs';
 import { managedFiles, printFindings, repoFindings } from './check.mjs';
 import { RepoError, repoRoot } from './repo.mjs';
 
 export const retiredFiles = ['.github/pull_request_template.md'];
+const SETTINGS = '.claude/settings.json';
+const MERGE_AUDIT_HOOK = /merge-audit\.mjs["']?\s+--hook\b/;
 
 function fsCall(path, action) {
 	try {
@@ -94,6 +97,75 @@ function apply(root, { entry, action, bytes, mode }) {
 	});
 }
 
+function dropEmpty(parent, key) {
+	const value = parent[key];
+	if ((Array.isArray(value) && value.length === 0) || (value && typeof value === 'object' && Object.keys(value).length === 0)) delete parent[key];
+}
+
+function stripAskRules(settings) {
+	const ask = settings.permissions?.ask;
+	if (!Array.isArray(ask)) return [];
+	const removed = ask.filter((entry) => sharedAskRules.includes(entry));
+	if (removed.length === 0) return [];
+	settings.permissions.ask = ask.filter((entry) => !sharedAskRules.includes(entry));
+	dropEmpty(settings.permissions, 'ask');
+	dropEmpty(settings, 'permissions');
+	return removed.map((entry) => `ask rule ${entry}`);
+}
+
+function stripMergeAuditHook(settings) {
+	const groups = settings.hooks?.PreToolUse;
+	if (!Array.isArray(groups)) return [];
+	const removed = [];
+	for (const group of groups) {
+		if (!Array.isArray(group?.hooks)) continue;
+		const kept = group.hooks.filter((hook) => !MERGE_AUDIT_HOOK.test(hook?.command ?? ''));
+		for (let count = group.hooks.length - kept.length; count > 0; count--) removed.push('hook merge-audit.mjs --hook');
+		group.hooks = kept;
+	}
+	if (removed.length === 0) return [];
+	settings.hooks.PreToolUse = groups.filter((group) => !Array.isArray(group?.hooks) || group.hooks.length > 0);
+	dropEmpty(settings.hooks, 'PreToolUse');
+	dropEmpty(settings, 'hooks');
+	return removed;
+}
+
+// The shared ask rules and the merge-audit hook now come from the plugin, so setup drops repo copies.
+function planSettings(root) {
+	const parentSkip = symlinkedParent(root, SETTINGS);
+	if (parentSkip) return { skip: parentSkip };
+	let text;
+	try {
+		if (!lstatSync(join(root, SETTINGS)).isFile()) return { skip: 'is not a regular file; left as is' };
+		text = readFileSync(join(root, SETTINGS), 'utf8');
+	} catch (error) {
+		if (error.code === 'ENOENT') return { removed: [] };
+		throw new RepoError(`cannot read ${SETTINGS}: ${error.code ?? error.message}`);
+	}
+	let settings;
+	try {
+		settings = JSON.parse(text);
+	} catch (error) {
+		return { skip: error.message };
+	}
+	if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return { skip: 'is not a JSON object' };
+	const removed = [...stripAskRules(settings), ...stripMergeAuditHook(settings)];
+	return { removed, bytes: `${JSON.stringify(settings, null, 2)}\n` };
+}
+
+function writeSettings(root, bytes) {
+	const full = join(root, SETTINGS);
+	const staged = `${full}.catati.tmp`;
+	fsCall(SETTINGS, () => {
+		try {
+			writeFileSync(staged, bytes, { mode: lstatSync(full).mode & 0o7777 });
+			renameSync(staged, full);
+		} finally {
+			rmSync(staged, { force: true });
+		}
+	});
+}
+
 export function setup(cwd, args = []) {
 	const unknown = args.find((arg) => arg !== '--dry-run');
 	if (unknown !== undefined) {
@@ -121,8 +193,15 @@ export function setup(cwd, args = []) {
 			if (!dryRun) fsCall(removal.path, () => rmSync(join(root, removal.path)));
 			console.log(`removed ${removal.path}`);
 		}
+		const settings = planSettings(root);
+		if (settings.skip) console.log(`skipped ${SETTINGS}: ${settings.skip}`);
+		for (const line of settings.removed ?? []) console.log(`removed ${SETTINGS} ${line}`);
+		if (settings.removed?.length) {
+			if (!dryRun) writeSettings(root, settings.bytes);
+			console.log(`updated ${SETTINGS}`);
+		}
 		printFindings(repoFindings(root, new Map(plans.filter((p) => p.bytes).map((p) => [p.entry.path, p.bytes]))));
-		const skipped = [...plans, ...removals].filter((p) => p.skip).length;
+		const skipped = [...plans, ...removals, settings].filter((p) => p.skip).length;
 		if (skipped > 0) console.error(`catati: setup skipped ${skipped} file(s); the standard is not fully applied`);
 	} catch (error) {
 		if (!(error instanceof RepoError)) throw error;

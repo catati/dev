@@ -7,6 +7,8 @@ import { test } from 'node:test';
 
 const script = new URL('../plugins/catati/hooks/session-start.mjs', import.meta.url).pathname;
 const rule = readFileSync(new URL('../plugins/catati/rules/pstack-models.md', import.meta.url));
+const conventions = new URL('../plugins/catati/conventions', import.meta.url).pathname;
+const standard = readFileSync(new URL('../plugins/catati/rules/catati-standard.md', import.meta.url), 'utf8').replace('{conventions}', conventions);
 
 function box(t) {
 	const parent = mkdtempSync(join(tmpdir(), 'catati-plugin-start-'));
@@ -35,7 +37,7 @@ test('a project folder that is no repo gets the git hooks path set in each repo 
 	const catHotel = b.repo(join(b.project, 'cat-hotel'));
 	const knowledge = b.repo(join(b.project, 'knowledge'), { githooks: false });
 	writeFileSync(join(b.project, 'notes.txt'), 'x');
-	assert.deepEqual(b.run(b.project, b.project), { status: 0, out: '' });
+	assert.deepEqual(b.run(b.project, b.project), { status: 0, out: standard });
 	assert.equal(b.hooksPath(catHotel), '.githooks');
 	assert.equal(b.hooksPath(knowledge), '');
 	assert.deepEqual(readFileSync(b.rulePath), rule);
@@ -60,7 +62,7 @@ test('a hooks path set to another folder and an existing model rule are left as 
 	writeFileSync(b.rulePath, 'mine');
 	const { status, out } = b.run(b.project, b.project);
 	assert.equal(status, 0);
-	assert.equal(out, `catati: ${repo}: hooks-path: core.hooksPath is .husky, not .githooks; left as is\n`);
+	assert.equal(out, `${standard}catati: ${repo}: hooks-path: core.hooksPath is .husky, not .githooks; left as is\n`);
 	assert.equal(b.hooksPath(repo), '.husky');
 	assert.equal(readFileSync(b.rulePath, 'utf8'), 'mine');
 });
@@ -68,7 +70,7 @@ test('a hooks path set to another folder and an existing model rule are left as 
 test('a project folder that cannot be read still installs the model rule and exits 0', (t) => {
 	const b = box(t);
 	const { status, out } = b.run(b.project, join(b.project, 'missing'));
-	assert.deepEqual({ status, out }, { status: 0, out: '' });
+	assert.deepEqual({ status, out }, { status: 0, out: standard });
 	assert.ok(existsSync(b.rulePath));
 });
 
@@ -76,6 +78,16 @@ test('the session setup runs when its script is started through a symlink', (t) 
 	const b = box(t);
 	const link = join(b.parent, 'session-start.mjs');
 	symlinkSync(script, link);
-	assert.deepEqual(b.run(b.project, b.project, link), { status: 0, out: '' });
+	assert.deepEqual(b.run(b.project, b.project, link), { status: 0, out: standard });
 	assert.deepEqual(readFileSync(b.rulePath), rule);
+});
+
+test('every run prints the Catati standard with the absolute path of the plugin conventions, the same each time', (t) => {
+	const b = box(t);
+	const first = b.run(b.project, b.project).out;
+	assert.equal(first, standard);
+	assert.match(first, /^Claude changes production only when the operator asks/);
+	assert.ok(first.includes(`The Catati conventions ship with this plugin, at ${conventions}.`));
+	assert.ok(existsSync(join(conventions, 'branches.md')));
+	assert.equal(b.run(b.project, b.project).out, first);
 });

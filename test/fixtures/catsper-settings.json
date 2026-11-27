@@ -1,0 +1,64 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(make deploy-prod*)",
+      "Bash(firebase deploy*)",
+      "Bash(gh workflow run*)",
+      "Bash(gh api *dispatches*)",
+      "Bash(gh api *git/refs*)",
+      "Bash(gh api *-X*contents/*)",
+      "Bash(gh api *contents/*-X*)",
+      "Bash(gh api *--method*contents/*)",
+      "Bash(gh api *contents/*--method*)",
+      "Bash(gh api *-f*contents/*)",
+      "Bash(gh api *contents/*-f*)",
+      "Bash(gh api *-F*contents/*)",
+      "Bash(gh api *contents/*-F*)",
+      "Bash(gh api *--input*contents/*)",
+      "Bash(gh api *contents/*--input*)",
+      "Bash(gh secret*)",
+      "Bash(gh variable*)",
+      "Bash(gh repo edit*)",
+      "Bash(gh repo delete*)",
+      "Bash(gh api *createCommitOnBranch*)",
+      "Bash(gh api *createRef*)",
+      "Bash(gh api *updateRef*)",
+      "Bash(git -c *)",
+      "Bash(make *ENV=prod*)",
+      "Bash(gcloud *iam *)",
+      "Bash(gcloud * add-iam-policy-binding*)",
+      "Bash(gcloud * remove-iam-policy-binding*)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.claude/settings.local.json)",
+      "Edit(~/.claude/settings.json)",
+      "Bash(gh pr merge:*)",
+      "mcp__github__merge_pull_request"
+    ]
+  },
+  "sandbox": {
+    "excludedCommands": [
+      "make verify *",
+      "make e2e *",
+      "make integration *",
+      "make serve *",
+      "make prove-guard *",
+      "make deps *",
+      "make install *",
+      "agent-browser *",
+      "git *"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__github__merge_pull_request|mcp__github__enable_pr_auto_merge|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/merge-audit.mjs\" --hook"
+          }
+        ]
+      }
+    ]
+  }
+}
