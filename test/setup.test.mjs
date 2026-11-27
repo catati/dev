@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
-const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
+const cli = new URL('../plugins/catati/scripts/catati.mjs', import.meta.url).pathname;
+const template = (name) => readFileSync(new URL(`../plugins/catati/templates/${name}`, import.meta.url));
 
 const managed = {
 	'.github/ISSUE_TEMPLATE/issue.yml': 'issue.yml',
@@ -239,4 +239,22 @@ test('an unknown option prints one line and exits with 2', (t) => {
 	const box = sandbox(t);
 	assert.deepEqual(box.run('--force'), { status: 2, lines: [], errors: ['catati: setup takes only --dry-run, not --force'] });
 	assert.equal(existsSync(join(box.root, '.github')), false);
+});
+
+test('a copy of the plugin folder alone runs setup and check, so a synced plugin needs no catati/dev clone', (t) => {
+	const parent = mkdtempSync(join(tmpdir(), 'catati-plugin-'));
+	t.after(() => rmSync(parent, { recursive: true, force: true }));
+	const plugin = join(parent, 'plugin');
+	execFileSync('cp', ['-R', new URL('../plugins/catati', import.meta.url).pathname, plugin]);
+	const root = join(parent, 'repo');
+	mkdirSync(root);
+	execFileSync('git', ['init', '-q'], { cwd: root });
+	const env = { ...process.env, GIT_CEILING_DIRECTORIES: parent };
+	const run = (command) => spawnSync('node', [join(plugin, 'scripts', 'catati.mjs'), command], { cwd: root, env, encoding: 'utf8' });
+	const setup = run('setup');
+	assert.equal(setup.status, 0, setup.stderr);
+	assert.deepEqual(setup.stdout.trim().split('\n'), [...every('created'), ...remaining]);
+	const check = run('check');
+	assert.equal(check.status, 1);
+	assert.deepEqual(check.stdout.trim().split('\n'), remaining);
 });

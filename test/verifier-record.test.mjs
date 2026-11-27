@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { OPERATOR, doors, main, merger, parseDoors, verdict } from '../templates/verifier-record/verifier-record.mjs';
+import { OPERATOR, doors, main, merger, parseDoors, verdict } from '../plugins/catati/templates/verifier-record/verifier-record.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const doorsFile = read('templates/verifier-record/doors.md');
+const doorsFile = read('plugins/catati/templates/verifier-record/doors.md');
 const list = parseDoors(doorsFile);
 const isDoor = (files, extra = {}) => doors({ files, list, ...extra }).length > 0;
 
@@ -50,7 +50,7 @@ test('the description names the head and who merges, within the 140 characters a
 
 test('the door list is read from the doors.md next to the script', () => {
 	assert.ok(list.links, 'the symlink and submodule rule');
-	for (const pattern of ['.github/**', '**/package.json', 'env/setup.sh', 'templates/githooks/**', '**/wrangler.jsonc', 'firestore.indexes.json'])
+	for (const pattern of ['.github/**', '**/package.json', 'env/setup.sh', 'plugins/catati/templates/githooks/**', '**/wrangler.jsonc', 'firestore.indexes.json'])
 		assert.ok(list.patterns.includes(pattern), pattern);
 	assert.ok(!list.patterns.includes('pnpm-lock.yaml'), 'only the Path column is read');
 	assert.throws(() => parseDoors('# Nothing here\n'), /no \*\*\/package\.json row/);
@@ -61,11 +61,11 @@ test('a PR is a one-way door when a file matches a path on the list', () => {
 	const dev127 = ['README.md', 'conventions/ci.md', 'conventions/deploy.md', 'conventions/naming.md', 'lib/check.mjs', 'package.json', 'plugins/catati/.claude-plugin/plugin.json', 'plugins/catati/skills/repo-setup/SKILL.md', 'test/check.test.mjs'];
 	assert.deepEqual(doors({ files: dev127, list }).map((door) => door.file), ['package.json'], 'dev#127');
 	assert.ok(!isDoor(['README.md', 'docs/cli.md', 'conventions/naming.md', 'lib/check.mjs', 'test/check.test.mjs']), 'docs and code alone');
-	for (const file of ['.github/workflows/verifier-record.yml', 'Makefile', 'ops.mk', 'env/setup.sh', 'templates/githooks/pre-push', 'api/migrations/0001.sql', 'web/.npmrc', 'plugins/catati/hooks/main.mjs', 'compose.dev.yml'])
+	for (const file of ['.github/workflows/verifier-record.yml', 'Makefile', 'ops.mk', 'env/setup.sh', 'plugins/catati/templates/githooks/pre-push', 'api/migrations/0001.sql', 'web/.npmrc', 'plugins/catati/hooks/main.mjs', 'compose.dev.yml'])
 		assert.ok(isDoor([file]), `${file} is a door`);
 	for (const file of ['.github/.gitkeep', '.claude/hooks/.lib.mjs', '.githooks/pre-push'])
 		assert.ok(isDoor([file]), `${file} is a door, though a segment starts with a dot`);
-	for (const file of ['web/firebase.json', 'pnpm-lock.yaml', 'env/README.md', 'templates/node-version']) assert.ok(!isDoor([file]), `${file} is not a door`);
+	for (const file of ['web/firebase.json', 'pnpm-lock.yaml', 'env/README.md', 'plugins/catati/templates/node-version']) assert.ok(!isDoor([file]), `${file} is not a door`);
 });
 
 test('a PR of only manifests that changes only versions and dependencies is not a door', () => {
@@ -129,7 +129,7 @@ test('main still posts the verdict when it cannot tell who merges', (t) => {
 });
 
 test("the workflow runs the repo's own copy of the script from its default branch, never the PR head", () => {
-	const workflow = read('templates/verifier-record/workflow.yml');
+	const workflow = read('plugins/catati/templates/verifier-record/workflow.yml');
 	const on = /^on:\n((?: .*\n)*)/m.exec(workflow)[1];
 	assert.deepEqual([...on.matchAll(/^ {2}(\w+):/gm)].map((match) => match[1]), ['pull_request_target', 'issue_comment']);
 	assert.doesNotMatch(workflow, /^\s+(?:ref|repository):/m, 'checkout takes the default ref of the event');

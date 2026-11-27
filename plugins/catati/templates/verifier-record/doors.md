@@ -18,6 +18,6 @@ The operator merges a PR that adds, changes or removes a file at one of these pa
 | `**/wrangler.toml`, `**/wrangler.json`, `**/wrangler.jsonc`, `**/shopify.app*.toml`, `firebase.json`, `.firebaserc` | Deploy config and the projects it targets. `firebase.json` and `.firebaserc` count only at the root, where the Firebase CLI reads them. |
 | `firestore.rules`, `storage.rules`, `firestore.indexes.json` | The access rules and indexes of live data. These count only at the root, so a `firestore.rules` in a subfolder is not a match. |
 | `**/migrations/**` | Data migrations. |
-| `templates/githooks/**` | `catati setup` copies these into the Git hooks of every repo. |
+| `plugins/catati/templates/githooks/**` | `catati setup` copies these into the Git hooks of every repo. |
 
 Lockfiles are not doors. CI checks a dependency bump.

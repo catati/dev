@@ -1,15 +1,10 @@
----
-name: project-setup
-description: Set up a project (new, existing or messy) with its Focus stream and its three routines, or run the start, end, sod, hourly, eod or tidy step a routine calls. Use for /catati:project-setup or re-running project setup. Idempotent.
----
-
 # Project setup
 
-Pick the branch from the argument:
+The argument picks the branch:
 - `start`: **Start**. The first line of every routine. Read only the shared rules and the Start section, then go back to the routine.
 - `end sod`, `end hourly`, `end eod`: **End**. The last line of every routine. Run the Sync for that kind, then Close the run.
-- `sod`, `hourly`, `eod`, `tidy`: **Sync**. Read only the Sync section. (Older routines call these directly from their sync line; it still works.)
-- none or `setup`: **Setup**. The operator typed `/catati:project-setup` in this project's chat.
+- `sod`, `hourly`, `eod`, `tidy`: **Sync**. Read only the Sync section.
+- `project`: **Setup**. The operator typed `/catati:setup-dev project` in this project's chat.
 
 Shared rules for both branches:
 - The **operator** is the person who owns this project and types in its chat.
@@ -42,12 +37,12 @@ Then do the routine's own steps, then its End line.
 
 ## Sync
 
-`tidy` alone: skip to **tidy**. Otherwise load `ArtifactData` and query your streams. None: say "Focus: project not joined; run /catati:project-setup" in one line and end the sync. First read this project's memory file `focus-rules` if it exists, and follow it. Sync reports progress only: write your streams and your events, apply fixes, tidy threads and tidy memory, nothing else. Few tool calls.
+`tidy` alone: skip to **tidy**. Otherwise load `ArtifactData` and query your streams. None: say "Focus: project not joined; run /catati:setup-dev project" in one line and end the sync. First read this project's memory file `focus-rules` if it exists, and follow it. Sync reports progress only: write your streams and your events, apply fixes, tidy threads and tidy memory, nothing else. Few tool calls.
 
 **sod**
 1. `get days/<today>`. Note the MITs whose `stream` is yours.
 2. Each stream: `get`, read its progress source, then `update` with `if_version`: state (on track, at risk or blocked), focus, blockers, needs_shien, needs_link, updated_at, source "owner". Keep `progress_source`. Five short lines in total per stream.
-3. **Fixes** (operator, 2026-11-08: Focus fixes the projects). Each stream's `fixes` with status "open": kind "rule": add it as one line to this project's memory file `focus-rules` (create it, under 4 KB), then status "done". Kind "fix" that the sync can do itself (a stream field, a memory line): do it, then status "done". A fix that needs a routine change: status "needs_shien", note "run /catati:project-setup". Write `fixes` back with `if_version`. Add "Fixes: N done, M need you" to the final message, with one line for each needs_shien fix.
+3. **Fixes** (operator, 2026-11-08: Focus fixes the projects). Each stream's `fixes` with status "open": kind "rule": add it as one line to this project's memory file `focus-rules` (create it, under 4 KB), then status "done". Kind "fix" that the sync can do itself (a stream field, a memory line): do it, then status "done". A fix that needs a routine change: status "needs_shien", note "run /catati:setup-dev project". Write `fixes` back with `if_version`. Add "Fixes: N done, M need you" to the final message, with one line for each needs_shien fix.
 4. You own a MIT today: add "On MIT: <title>" to the routine's final message.
 5. `query ideas` where stream is yours and status "active": each with `revisit_on` on or before today goes in the final message as "Idea due: <title> – <next_step>".
 
@@ -106,9 +101,9 @@ One path for a new project (full init), an existing one (update) and a messy one
   Routine: <project-slug>/<kind> v<N>
   Consolidated from: <trig_id>, ...   (or "none")
   ```
-- Right after the marker comes the **start line**, exactly: `Start: use the Skill tool to run catati:project-setup with args "start" and follow it, then do the steps below.` It carries the common instructions, so no routine repeats them.
-- **No hourly** (lesson, 2026-11-16: projects that dropped the hourly never ran tidy, so stalled threads and conflicted PRs went unswept). When the operator keeps a project without an hourly routine, the sod prompt carries the **tidy line**, exactly `Tidy: use the Skill tool to run catati:project-setup with args "tidy" and follow it.`, right before its Post section, and Verify expects no hourly.
-- Every routine prompt ends with the **end line**, exactly: `End: use the Skill tool to run catati:project-setup with args "end <kind>" and follow it.` It stands alone, outside every section. An older `Project sync: ...` or `Focus sync: ... project-focus ...` line counts as a changed end line.
+- Right after the marker comes the **start line**, exactly: `Start: use the Skill tool to run catati:setup-dev with args "start" and follow it, then do the steps below.` It carries the common instructions, so no routine repeats them.
+- **No hourly** (lesson, 2026-11-16: projects that dropped the hourly never ran tidy, so stalled threads and conflicted PRs went unswept). When the operator keeps a project without an hourly routine, the sod prompt carries the **tidy line**, exactly `Tidy: use the Skill tool to run catati:setup-dev with args "tidy" and follow it.`, right before its Post section, and Verify expects no hourly.
+- Every routine prompt ends with the **end line**, exactly: `End: use the Skill tool to run catati:setup-dev with args "end <kind>" and follow it.` It stands alone, outside every section. An older `Project sync: ...` or `Focus sync: ... project-focus ...` line counts as a changed end line.
 - **Replace** is the only way to change a routine: `update_trigger` refuses prompt, name, cron and model changes. Create the new task with `v<N+1>`, where N is the replaced task's own version, then **clean up** the old one.
 - **Clean up** (operator, 2026-11-08: a project keeps only its 3 routines): after Verify passes, delete each replaced routine, folded source and absorbed task with `delete_trigger`. Deleting also deletes every thread that task's runs started, so the plan names each task to delete and its run count, and the operator's yes covers exactly that list.
 - Models: hourly Haiku 5.5; sod and eod Sonnet 5.5 (operator, 2026-11-08). Claude cannot set a task's model (create_trigger has no model field; update_trigger refuses), so the report lists every task created this run with its model for the operator to set at claude.ai.
@@ -136,6 +131,6 @@ One path for a new project (full init), an existing one (update) and a messy one
 9. **Apply** after the yes: create each missing or changed routine with `create_trigger` (`create_new_session_on_fire=true`, `initiation=human_request`); a replacement keeps the old `Consolidated from` ids plus the replaced id. Each replaced routine and folded source stays until Verify passes. A `needs_device_approval` result: leave that task and report it.
 10. **Test fire** (lesson, 2026-11-18: test fires posted a second daily report, read a one-hour window that could not show the signal, and the thread ended before the old routines were removed). Fire each new routine once with `fire_trigger`; its prompt for that run starts "Test run, not today's report." and reads the routine's real look-back window. Read each run's thread, then report pass or fail per routine, what was switched off or deleted, and the memory saved, in this thread before it ends.
 11. **Verify** with `list_triggers`. Leave the clean-up list out of the count. Pass means all of these hold: one enabled routine per kind the project keeps, with the right marker, name, cron, start line and end line; every folded source listed in a `Consolidated from`; no other recurring task in the project; the stream reads back with this `owner_project`. Report pass or fail per check, with ids. All pass: clean up. Any fail: keep every old task and report.
-12. **Report** in at most 6 lines: stream, routines created and replaced, verify result, tasks cleaned up. Any task created this run: end with "Set models at claude.ai:" and one line per created task, `<Project> – <Kind> → <model>` (Hourly → Haiku 5.5, SOD and EOD → Sonnet 5.5). Nothing created: skip it. Close with "Re-run /catati:project-setup any time; it changes only what differs."
+12. **Report** in at most 6 lines: stream, routines created and replaced, verify result, tasks cleaned up. Any task created this run: end with "Set models at claude.ai:" and one line per created task, `<Project> – <Kind> → <model>` (Hourly → Haiku 5.5, SOD and EOD → Sonnet 5.5). Nothing created: skip it. Close with "Re-run /catati:setup-dev project any time; it changes only what differs."
 
 Setup covers the stream and the routines. Repositories, environments, CLAUDE.md and moving tasks between projects stay with the operator; name them in the report when the operator seems to need them.

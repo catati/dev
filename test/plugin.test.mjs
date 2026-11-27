@@ -22,22 +22,36 @@ test('the plugin has no top-level bin directory, which claude.ai rejects', () =>
 	assert.equal(existsSync(join(pluginRoot, 'bin')), false);
 });
 
-test('each skill names its own folder and has a description', () => {
+test('setup-dev is the one Catati skill; the only other is the hidden agent-browser stub, and each names its own folder', () => {
 	const skills = join(pluginRoot, 'skills');
 	const names = readdirSync(skills).sort();
-	assert.deepEqual(names, ['agent-browser', 'project-setup', 'repo-setup']);
+	assert.deepEqual(names, ['agent-browser', 'setup-dev']);
 	for (const name of names) {
 		const frontmatter = readFileSync(join(skills, name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
 		assert.match(frontmatter, new RegExp(`^name: ${name}$`, 'm'));
 		assert.match(frontmatter, /^description: \S/m);
 	}
+	assert.match(readFileSync(join(skills, 'agent-browser', 'SKILL.md'), 'utf8'), /^hidden: true$/m);
 });
 
-test('project-setup calls itself by its plugin name, because routines load it from the plugin', () => {
-	const skill = readFileSync(join(pluginRoot, 'skills', 'project-setup', 'SKILL.md'), 'utf8');
-	assert.doesNotMatch(skill, /(?<![\w:])\/?project-setup with args|(?<![\w:])\/project-setup\b/);
-	assert.match(skill, /`Start: use the Skill tool to run catati:project-setup with args "start"/);
-	assert.match(skill, /`End: use the Skill tool to run catati:project-setup with args "end <kind>"/);
+test('every file the setup-dev skill links to exists', () => {
+	const dir = join(pluginRoot, 'skills', 'setup-dev');
+	const skill = readFileSync(join(dir, 'SKILL.md'), 'utf8');
+	const links = [...skill.matchAll(/\]\(([^)#]+)\)/g)].map((match) => match[1]);
+	assert.ok(links.length > 0);
+	for (const link of links) assert.ok(existsSync(join(dir, link)), link);
+});
+
+test('routine lines call setup-dev by its plugin name, because routines load it from the plugin', () => {
+	const project = readFileSync(join(pluginRoot, 'skills', 'setup-dev', 'references', 'project.md'), 'utf8');
+	assert.doesNotMatch(project, /project-setup|repo-setup/);
+	assert.match(project, /`Start: use the Skill tool to run catati:setup-dev with args "start"/);
+	assert.match(project, /`End: use the Skill tool to run catati:setup-dev with args "end <kind>"/);
+});
+
+test('no plugin text clones catati/dev, because a synced plugin carries the standard', () => {
+	const files = readdirSync(pluginRoot, { recursive: true }).filter((name) => name.endsWith('.md'));
+	for (const name of files) assert.doesNotMatch(readFileSync(join(pluginRoot, name), 'utf8'), /git clone[^\n]*catati\/dev/, name);
 });
 
 const hooks = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8')).hooks;
