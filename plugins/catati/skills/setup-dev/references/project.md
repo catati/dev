@@ -6,7 +6,7 @@ The argument picks the branch:
 - `sod`, `hourly`, `eod`, `tidy`: **Sync**. Read only the Sync section.
 - `project`: **Setup**. The operator typed `/catati:setup-dev project` in this project's chat.
 
-Shared rules for both branches:
+Shared rules for every branch:
 - The **operator** is the person who owns this project and types in its chat.
 - Database: `URL = https://claude.ai/artifact/G11GhY8PqfPpJ4YsKCq2NW` (Focus Basecamp). System rules: Focus system doc https://claude.ai/artifact/FzMgHLdHW1LeJAD5DFgaL9.
 - Stored times are UTC from `date -u +%FT%TZ`. Day ids are the NZ date from `TZ=Pacific/Auckland date +%F`.
