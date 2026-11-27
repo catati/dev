@@ -61,9 +61,15 @@ test('the SessionStart hook runs the session setup from the plugin root', () => 
 	assert.deepEqual(commandsOf('SessionStart'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"']);
 });
 
-test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs, and the plugin has no other hook, so no PreToolUse prod guard', () => {
+test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs', () => {
 	for (const event of ['WorktreeCreate', 'WorktreeRemove']) assert.deepEqual(commandsOf(event), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/worktree.mjs"']);
-	assert.deepEqual(Object.keys(hooks).sort(), ['SessionStart', 'WorktreeCreate', 'WorktreeRemove']);
+	assert.deepEqual(Object.keys(hooks).sort(), ['PreToolUse', 'SessionStart', 'WorktreeCreate', 'WorktreeRemove']);
+});
+
+test('one PreToolUse hook runs the guard on every edit, Bash call and MCP merge tool', () => {
+	assert.deepEqual(commandsOf('PreToolUse'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs"']);
+	const [group] = hooks.PreToolUse;
+	assert.deepEqual(group.matcher.split('|').sort(), ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Write', 'mcp__github__enable_pr_auto_merge', 'mcp__github__merge_pull_request']);
 });
 
 test('every hook module imports only files inside the plugin, because a synced plugin holds only its own folder', () => {
