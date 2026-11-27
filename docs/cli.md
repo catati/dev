@@ -1,14 +1,14 @@
 # `catati` CLI reference
 
-The CLI has two commands, `check` and `setup`. Both act on the git repo that holds the current directory, so they work from any subdirectory. Both compare the repo with the `templates/` folder of their own copy of catati/dev, so they need no network.
+The CLI has two commands, `check` and `setup`. Both act on the git repo that holds the current directory, so they work from any subdirectory. Both compare the repo with the [`templates/`](../plugins/catati/templates/) folder of the plugin that holds the CLI, so they need no network.
 
 ## `catati check`
 
 ```text
-node bin/catati.mjs check
+node plugins/catati/scripts/catati.mjs check
 ```
 
-`catati check` checks the rules that `conventions/` marks `catati check`.
+`catati check` checks the rules that [`conventions/`](../plugins/catati/conventions/) marks `catati check`.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -81,7 +81,7 @@ An allow line turns off one check for a time:
 ## `catati setup`
 
 ```text
-node bin/catati.mjs setup [--dry-run]
+node plugins/catati/scripts/catati.mjs setup [--dry-run]
 ```
 
 `catati setup` writes the files every Catati repo carries. A run on a repo that is already up to date changes nothing.
@@ -95,9 +95,9 @@ node bin/catati.mjs setup [--dry-run]
 | `.github/verifier-record/verifier-record.mjs`, `.github/verifier-record/doors.md` | Copies the script and the one-way-door list from `templates/verifier-record/`. The workflow runs the script, which reads `doors.md` next to itself. |
 | `.github/pull_request_template.md` | Deletes it, because catati/dev no longer manages it. |
 
-A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](../conventions/issues-and-prs.md#one-way-door-paths).
+A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](../plugins/catati/conventions/issues-and-prs.md#one-way-door-paths).
 
-`templates/labels.json` holds the four status labels as an array of `name`, `color` and `description` objects. `catati setup` creates no labels from it. `/catati:repo-setup` does.
+`templates/labels.json` holds the four status labels as an array of `name`, `color` and `description` objects. `catati setup` creates no labels from it. `/catati:setup-dev` does.
 
 `setup` prints one line per file, then the findings of `catati check`. Those findings are the changes `setup` does not make.
 
