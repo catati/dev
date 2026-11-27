@@ -66,4 +66,14 @@ uv --version # fail setup loudly if the image stops shipping uv
 # Keep this version at or above the highest @playwright/test pin across the repos.
 npx -y playwright@1.64.1 install-deps chromium
 
+# --- agent-browser ---------------------------------------------------------------
+# The user drives agent-browser from any session, and a thread that opens in no repo runs no repo
+# install. So, like the model rule, the CLI is the user's, installed for every session. Its skill ships
+# in the catati plugin.
+# It drives the Chromium in the image's /opt/pw-browsers, so it downloads no browser.
+# The pin follows catsper's devDependency only so a catsper session's local and global CLI agree.
+npm install -g agent-browser@0.43.0
+# npm skips the postinstall, so the first run links the native binary. Fail setup loudly if it breaks.
+agent-browser --version
+
 echo "catati cloud setup: done"

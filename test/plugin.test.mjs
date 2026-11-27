@@ -25,7 +25,7 @@ test('the plugin has no top-level bin directory, which claude.ai rejects', () =>
 test('each skill names its own folder and has a description', () => {
 	const skills = join(pluginRoot, 'skills');
 	const names = readdirSync(skills).sort();
-	assert.deepEqual(names, ['project-setup', 'repo-setup']);
+	assert.deepEqual(names, ['agent-browser', 'project-setup', 'repo-setup']);
 	for (const name of names) {
 		const frontmatter = readFileSync(join(skills, name, 'SKILL.md'), 'utf8').match(/^---\n([\s\S]*?)\n---\n/)?.[1] ?? '';
 		assert.match(frontmatter, new RegExp(`^name: ${name}$`, 'm'));
@@ -63,4 +63,11 @@ test('every hook module imports only files inside the plugin, because a synced p
 			assert.ok(existsSync(resolved), `${name} imports missing ${target}`);
 		}
 	}
+});
+
+test('the agent-browser skill names the version env/setup.sh pins, so a pin bump refreshes it', () => {
+	const skill = readFileSync(join(pluginRoot, 'skills', 'agent-browser', 'SKILL.md'), 'utf8');
+	const pin = readFileSync(join(repo, 'env', 'setup.sh'), 'utf8').match(/^npm install -g .*\bagent-browser@(\S+)/m)?.[1];
+	assert.ok(pin);
+	assert.match(skill, new RegExp(`Copied unchanged from agent-browser ${pin.replaceAll('.', '\\.')} `));
 });
