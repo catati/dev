@@ -1,8 +1,9 @@
 // Reads a Bash command into its simple commands, each a list of words, as the shell splits it:
 // quotes, comments, $(…), backticks, subshells and heredocs. A word is dynamic when the shell
 // would expand part of it. Command substitutions count as commands of their own, and a heredoc
-// body counts only for the substitutions an unquoted one expands. It throws when a heredoc that
-// never closes holds gh, since what runs then is unclear.
+// body counts only for the substitutions an unquoted one expands. A command's list also carries
+// stdin, the text of its heredoc or here-string, and piped, true when a pipe feeds it. It throws
+// when a heredoc that never closes holds gh, since what runs then is unclear.
 export function simpleCommands(source) {
 	return scan(source)[0];
 }
@@ -20,14 +21,21 @@ function scan(source, start = 0, inner = false) {
 		word.dynamic ||= dynamic;
 	};
 	let redirect = false;
+	let herestring = false;
+	let piped = false;
 	const end = () => {
-		if (word && !redirect) words.push(word);
-		if (word) redirect = false;
+		if (word && herestring) words.stdin = word.text;
+		else if (word && !redirect) words.push(word);
+		if (word) redirect = herestring = false;
 		word = null;
 	};
 	const close = () => {
 		end();
-		if (words.length) commands.push(words);
+		if (words.length) {
+			words.piped = piped;
+			commands.push(words);
+			piped = false;
+		}
 		words = [];
 	};
 	const nested = (from) => {
@@ -82,6 +90,7 @@ function scan(source, start = 0, inner = false) {
 			while (index < source.length && source[index] !== '\n') index++;
 		} else if (char === '<' && next === '<' && source[index + 2] === '<') {
 			end();
+			herestring = true;
 			index += 3;
 		} else if (char === '<' && next === '<') {
 			end();
@@ -89,7 +98,7 @@ function scan(source, start = 0, inner = false) {
 			while (source[index] === ' ' || source[index] === '\t') index++;
 			const delimiter = source.slice(index).match(/^[^\s;&|()<>]+/)?.[0] ?? '';
 			index += delimiter.length;
-			heredocs.push({ delimiter: delimiter.replace(/["'\\]/g, ''), expands: !/["'\\]/.test(delimiter) });
+			heredocs.push({ delimiter: delimiter.replace(/["'\\]/g, ''), expands: !/["'\\]/.test(delimiter), owner: words });
 		} else if (char === '>' || (char === '<' && next !== '<')) {
 			if (word && /^\d+$/.test(word.text)) word = null;
 			end();
@@ -105,9 +114,11 @@ function scan(source, start = 0, inner = false) {
 			if (char === ')') depth = Math.max(0, depth - 1);
 			close();
 			index++;
+			if (char === '|' && next !== '|' && source[index - 2] !== '|') piped = true;
 			if (char !== '\n') continue;
-			for (const { delimiter, expands } of heredocs.splice(0)) {
+			for (const { delimiter, expands, owner } of heredocs.splice(0)) {
 				const body = index;
+				let bodyEnd = source.length;
 				let closed = false;
 				while (index < source.length && !closed) {
 					const stop = source.indexOf('\n', index);
@@ -115,14 +126,17 @@ function scan(source, start = 0, inner = false) {
 					const tabs = line.match(/^\t*/)[0].length;
 					if (line.slice(tabs) === delimiter) {
 						closed = true;
+						bodyEnd = index;
 						index = stop < 0 ? source.length : stop;
 					} else if (inner && line.slice(tabs).startsWith(`${delimiter})`)) {
 						closed = true;
+						bodyEnd = index;
 						index += tabs + delimiter.length;
 					} else index = stop < 0 ? source.length : stop + 1;
 				}
-				const text = source.slice(body, index);
+				const text = source.slice(body, bodyEnd);
 				if (!closed && /\bgh\b/.test(text)) throw new Error('a heredoc that never closes holds gh');
+				owner.stdin = text;
 				if (expands) commands.push(...substitutions(text));
 			}
 		} else if (/\s/.test(char)) {

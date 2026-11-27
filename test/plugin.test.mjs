@@ -66,10 +66,27 @@ test('the WorktreeCreate and WorktreeRemove hooks both run worktree.mjs', () => 
 	assert.deepEqual(Object.keys(hooks).sort(), ['PreToolUse', 'SessionStart', 'WorktreeCreate', 'WorktreeRemove']);
 });
 
-test('one PreToolUse hook runs the guard on every edit, Bash call and MCP merge tool', () => {
-	assert.deepEqual(commandsOf('PreToolUse'), ['node "${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs"']);
-	const [group] = hooks.PreToolUse;
-	assert.deepEqual(group.matcher.split('|').sort(), ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Write', 'mcp__github__enable_pr_auto_merge', 'mcp__github__merge_pull_request']);
+test('the PreToolUse guard runs on every edit, Bash call and MCP merge tool of any server', () => {
+	assert.deepEqual(commandsOf('PreToolUse'), Array(2).fill('node "${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs"'));
+	const [tools, merges] = hooks.PreToolUse;
+	assert.deepEqual(tools.matcher.split('|').sort(), ['Bash', 'Edit', 'MultiEdit', 'NotebookEdit', 'Write']);
+	const matches = (name) => new RegExp(merges.matcher).test(name);
+	for (const name of ['mcp__github__merge_pull_request', 'mcp__github__enable_pr_auto_merge', 'mcp__plugin_github_github__merge_pull_request']) assert.ok(matches(name), name);
+	for (const name of ['mcp__github__disable_pr_auto_merge', 'mcp__github__merge_pull_requests', 'Bash']) assert.ok(!matches(name), name);
+});
+
+test('a PreToolUse guard that crashes or times out blocks the call', () => {
+	for (const group of hooks.PreToolUse) for (const hook of group.hooks) assert.equal(hook.onFailure, 'block');
+});
+
+test('setup-dev references name plugin files under <plugin>/, and env/.env.example names paths that exist', () => {
+	const references = join(pluginRoot, 'skills', 'setup-dev', 'references');
+	for (const name of readdirSync(references)) {
+		const text = readFileSync(join(references, name), 'utf8');
+		for (const [, path] of text.matchAll(/`([^`\s]*(?:templates|conventions|scripts|rules)\/[^`\s]*)`/g)) assert.match(path, /^<plugin>\//, `${name}: ${path}`);
+	}
+	const example = readFileSync(join(repo, 'env', '.env.example'), 'utf8');
+	for (const [, path] of example.matchAll(/\(([\w./-]+\.md)\)/g)) assert.ok(existsSync(join(repo, path)), path);
 });
 
 test('every hook module imports only files inside the plugin, because a synced plugin holds only its own folder', () => {

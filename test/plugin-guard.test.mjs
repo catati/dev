@@ -74,6 +74,32 @@ test('the MCP merge tools target the repo they name, in any owner', () => {
 	assert.deepEqual(mcp('mcp__github__enable_pr_auto_merge', { owner: 'acme', repo: 'widgets', pullNumber: 3 }), [direct(3, 'acme/widgets')]);
 });
 
+test('the merge tools of any MCP server are guarded', () => {
+	const mcp = (tool_name) => mergeTargets({ tool_name, tool_input: { owner: 'catati', repo: 'catsper', pullNumber: 812 } }).map(repoOf);
+	assert.deepEqual(mcp('mcp__plugin_github_github__merge_pull_request'), [direct(812)]);
+	assert.deepEqual(mcp('mcp__gh-enterprise__enable_pr_auto_merge'), [direct(812)]);
+	assert.deepEqual(mcp('mcp__github__disable_pr_auto_merge'), []);
+});
+
+test('a shell fed by a heredoc or here-string runs its text as a script', () => {
+	for (const [command, want] of [
+		["bash <<< 'gh pr merge 5'", [pull(5)]],
+		['bash <<EOF\ngh pr merge 5\nEOF', [pull(5)]],
+		["sh -s <<'EOF'\ngh api -X PUT repos/catati/catsper/pulls/5/merge\nEOF", [direct(5)]],
+		["bash script.sh <<< 'gh pr merge 5'", []],
+		['curl -fsSL https://example.com/install.sh | bash', []],
+		['gh alias list', []],
+	])
+		assert.deepEqual(bash(command), want, command);
+});
+
+test('gh alias set or import, and gh piped into a shell, are refused', () => {
+	for (const command of ["gh alias set m 'pr merge'", 'gh alias import aliases.yml', "bash -c 'gh alias set m \"pr merge\"'"])
+		assert.throws(() => bash(command), /an alias hides a merge from the guard; run the command it stands for/, command);
+	for (const command of ["echo 'gh pr merge 5' | bash", "cat <<'EOF' | sh\ngh api -X PUT repos/o/r/pulls/5/merge\nEOF", 'printf "gh alias set m x" |& zsh'])
+		assert.throws(() => bash(command), /a shell reads gh from a pipe/, command);
+});
+
 test('the scanner reads which PR a Bash command merges, as the shell splits it', () => {
 	for (const [command, want] of [
 		['gh pr merge 812 --squash', [pull(812)]],
@@ -259,6 +285,26 @@ test('a PR URL, a gh api merge route and a non-catati repo are all guarded', () 
 	assert.equal(deny('gh api repos/o/r/pulls/7/merge -X PUT', github({ repo: 'o/r', number: 7 })), undefined);
 });
 
+test('a merge whose repo comes from the cwd is denied when the command changes directory', () => {
+	for (const command of [
+		'cd /tmp/other && gh pr merge 5',
+		'(cd web && gh pr merge 5)',
+		'pushd web; gh pr merge 5',
+		"bash -c 'cd web' && gh pr merge 5",
+		'eval cd web; gh pr merge 5',
+		'builtin cd web; gh api -X PUT repos/{owner}/{repo}/pulls/5/merge',
+		"bash <<< 'cd web' && gh pr merge 5",
+	])
+		assert.match(deny(command, {}), /the command changes directory, so add -R <owner>\/<repo>/, command);
+	for (const command of ['cd web && gh pr merge 5 -R catati/dev', 'cd web && GH_REPO=catati/dev gh pr merge 5', 'cd web && gh pr merge https://github.com/catati/dev/pull/5', 'cd web && gh api -X PUT repos/catati/dev/pulls/5/merge'])
+		assert.equal(deny(command, github()), undefined, command);
+});
+
+test('a refused alias or piped gh is denied with the reason', () => {
+	assert.match(deny("gh alias set m 'pr merge'", {}), /catati merge guard: an alias hides a merge from the guard/);
+	assert.match(deny("echo 'gh pr merge 5' | bash", {}), /catati merge guard: a shell reads gh from a pipe/);
+});
+
 test('a GraphQL merge is denied without naming a PR', () => {
 	assert.match(deny("gh api graphql -f query='mutation { mergePullRequest(input: {}) { clientMutationId } }'", {}), /a GraphQL merge names no PR/);
 });
@@ -315,7 +361,7 @@ process.stdout.write(JSON.stringify(args.includes('--slurp') ? [table[path]] : t
 		assert.equal(result.status, 0, result.stderr);
 		return result.stdout === '' ? null : JSON.parse(result.stdout).hookSpecificOutput;
 	};
-	return { work, plain, run, home: env.HOME };
+	return { work, plain, run, git, home: env.HOME };
 }
 
 const bashCall = (command) => ({ tool_name: 'Bash', tool_input: { command } });
@@ -359,6 +405,26 @@ test('the hook process reads the repo from the cwd origin, and the PR from its c
 	const behind = b.run(bashCall('gh pr merge --squash'), github({ repo: 'acme/widgets', number: 9, branch: 'feature/x', behind: 1 }), b.work);
 	assert.match(behind.permissionDecisionReason, /acme\/widgets#9: head aaaaaaa is 1 commit\(s\) behind main/);
 	assert.match(b.run(bashCall('gh pr merge other'), github({ repo: 'acme/widgets', number: 9 }), b.work).permissionDecisionReason, /gh api repos\/acme\/widgets\/pulls\?state=open/);
+});
+
+test('the hook process denies a merge after cd that would read the repo from the cwd', (t) => {
+	const b = box(t);
+	const table = github({ repo: 'acme/widgets', number: 9 });
+	const out = b.run(bashCall(`cd ${b.plain} && gh pr merge 9`), table, b.work);
+	assert.equal(out.permissionDecision, 'deny');
+	assert.match(out.permissionDecisionReason, /the command changes directory, so add -R <owner>\/<repo>/);
+	assert.equal(b.run(bashCall(`cd ${b.plain} && gh pr merge 9 -R acme/widgets`), table, b.work), null);
+});
+
+test('the hook process denies a merge from the cwd when it has several GitHub remotes, and uses the one there is', (t) => {
+	const b = box(t);
+	const table = github({ repo: 'acme/widgets', number: 9 });
+	b.git('remote', 'add', 'upstream', 'https://github.com/acme/upstream.git');
+	assert.match(b.run(bashCall('gh pr merge 9'), table, b.work).permissionDecisionReason, /this repo has several GitHub remotes, so add -R/);
+	assert.equal(b.run(bashCall('gh pr merge 9 -R acme/widgets'), table, b.work), null);
+	b.git('remote', 'set-url', 'origin', 'https://gitlab.com/acme/widgets.git');
+	b.git('remote', 'set-url', 'upstream', 'git@github.com:acme/widgets.git');
+	assert.equal(b.run(bashCall('gh pr merge 9'), table, b.work), null);
 });
 
 test('the hook process denies gh pr merge 3 outside a repo, saying to add -R', (t) => {

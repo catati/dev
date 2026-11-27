@@ -40,7 +40,7 @@ Read the repo's GitHub settings and compare them with `<plugin>/conventions/repo
 
 Make each call a plain `gh api <path>`, one per command, with no pipe or loop, so that no call waits on an approval prompt.
 
-1. **Labels.** Read `templates/labels.json` and list the repo's labels with `gh api 'repos/{owner}/{repo}/labels?per_page=100'`. For each label in the file that the repo lacks, run `gh api 'repos/{owner}/{repo}/labels' -f name=<name> -f color=<color> -f description=<description>`. Leave existing labels as they are.
+1. **Labels.** Read `<plugin>/templates/labels.json` and list the repo's labels with `gh api 'repos/{owner}/{repo}/labels?per_page=100'`. For each label in the file that the repo lacks, run `gh api 'repos/{owner}/{repo}/labels' -f name=<name> -f color=<color> -f description=<description>`. Leave existing labels as they are.
 2. **Rulesets.** `gh api 'repos/{owner}/{repo}/rulesets'` lists them, and `gh api 'repos/{owner}/{repo}/rulesets/<id>'` returns each one's `rules` and `bypass_actors`. Read both `main` and `check`. The required checks live in `check`.
 3. **Dependabot.** Alerts are on when `gh api 'repos/{owner}/{repo}/dependabot/alerts?per_page=1'` returns a list, and off when it returns a 403 that says they are disabled. The `security_and_analysis.dependabot_security_updates.status` field of `gh api 'repos/{owner}/{repo}'` is the security-update state.
 4. **The `prod` environment.** The `required_reviewers` entry in `protection_rules` of `gh api 'repos/{owner}/{repo}/environments/prod'` names its reviewers.
