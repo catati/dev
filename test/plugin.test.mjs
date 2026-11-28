@@ -42,11 +42,12 @@ test('every file the setup-dev skill links to exists', () => {
 	for (const link of links) assert.ok(existsSync(join(dir, link)), link);
 });
 
-test('routine lines call setup-dev by its plugin name, because routines load it from the plugin', () => {
+test('project setup creates no routines and tells old routine calls to stop, since projects run no scheduled reports', () => {
 	const project = readFileSync(join(pluginRoot, 'skills', 'setup-dev', 'references', 'project.md'), 'utf8');
-	assert.doesNotMatch(project, /project-setup|repo-setup/);
-	assert.match(project, /`Start: use the Skill tool to run catati:setup-dev with args "start"/);
-	assert.match(project, /`End: use the Skill tool to run catati:setup-dev with args "end <kind>"/);
+	assert.doesNotMatch(project, /project-setup|repo-setup|create_trigger|fire_trigger/);
+	assert.match(project, /^## Old routine$/m);
+	assert.match(project, /runs no scheduled reports any more/);
+	assert.match(project, /enabled false/);
 });
 
 test('no plugin text clones catati/dev, because a synced plugin carries the standard', () => {
