@@ -7,11 +7,11 @@ The `dev` environment on claude.ai/code runs every cloud session for Catati repo
 | Form field | Source |
 | --- | --- |
 | Name | `dev` |
-| Network access | Custom. Paste [`env/network-allowlist.txt`](../env/network-allowlist.txt), and tick "also allow default package managers". |
+| Network access | Unrestricted. |
 | Environment variables | Paste [`env/.env.example`](../env/.env.example), then fill the blank values in the form. Use dev values only, because every user of the environment can read them. |
 | Setup script | Paste [`env/setup.sh`](../env/setup.sh). |
 
-**Network allowlist.** Never block a Catati domain, Google Fonts, Google Analytics, Cloudflare or Shopify. The allowlist holds each zone in the Cloudflare `Catati` account, as the apex and as `*.`. When a zone is added there, add it to the list and to `catatiZones` in [`test/network-allowlist.test.mjs`](../test/network-allowlist.test.mjs). A project thread can add only exact hosts to the cloud environment. A wildcard needs the operator in Project settings, so the thread gives the operator the whole paste-ready field in one message.
+**Network access.** The environment allows every host, so dev work and agent-browser never wait on an allowlist entry (operator, 2026-11-28: no needless friction in dev). The environment variables are dev-scoped and dev is on the free plan, so open egress reaches no prod account and no prod infrastructure credential. Dev data is a copy of active prod customer data (see [`deploy.md`](../conventions/deploy.md)), and the dev Cloudflare token has full access inside `catati-dev`, so open egress does widen where that copy could travel. Sessions still act as the operator's GitHub account, which can dispatch prod deploys, so [Who changes prod](../conventions/deploy.md#who-changes-prod) is what keeps a session off prod, not the network.
 
 **Setup script.** `env/setup.sh` installs Node 24, enables corepack, checks that uv is present, installs the Playwright system libraries and installs agent-browser. Before Claude starts, it also writes the pstack model rule to `~/.claude/rules/pstack-models.md` when that file is missing, so a session without the plugin still has the rule. `npm test` fails when the copy in `env/setup.sh` differs from `plugins/catati/rules/pstack-models.md`.
 
@@ -33,7 +33,7 @@ This repo is public, so treat every committed value as public.
 
 ## What the environment provides and what each repo installs
 
-The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser, because the user drives it from any session, including a thread that opens in no repo. Its skill ships in the `catati` plugin as `catati:agent-browser`. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens only hosts that the network allowlist allows.
+The environment provides only runtimes and the OS libraries that need root: Node 24 (24.15 or later), corepack, uv and the system libraries for Playwright's Chromium. It also provides agent-browser, because the user drives it from any session, including a thread that opens in no repo. Its skill ships in the `catati` plugin as `catati:agent-browser`. agent-browser uses the Chromium in the image's `/opt/pw-browsers`, and opens any public site.
 
 Each repo declares every other tool it needs. Its own install step then sets the tool up the same way on a Mac, in CI and in the cloud.
 
