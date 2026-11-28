@@ -24,7 +24,7 @@ In a cloud session that has the repo, run:
 
 The skill runs `catati setup` in the repo, fixes the conventions link in `CLAUDE.md`, creates missing status labels and lists the GitHub settings that differ from the conventions. It then opens one PR. If the repo already meets the standard, the skill opens no PR and reports "already up to date".
 
-In a claude.ai project, `/catati:setup-dev project` sets up the project's Focus stream and its routines.
+catati/dev covers code, repos, infra, the tech stack and architecture only. It does not set up claude.ai projects or their scheduled tasks (operator, 2026-11-28).
 
 Run the skill again after each catati/dev release to bring the repo up to the new standard.
 
