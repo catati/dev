@@ -5,6 +5,42 @@ import { managedFiles, printFindings, repoFindings } from './check.mjs';
 import { RepoError, repoRoot } from './repo.mjs';
 
 export const retiredFiles = ['.github/pull_request_template.md'];
+// Ask rules repos carried before the guard hook cut its list down to the dangerous calls, and the
+// merge asks the merge guard replaces. Setup drops them from a repo's settings with the shared ones.
+export const retiredAskRules = [
+	'Bash(gh workflow run*)',
+	'Bash(gh api *dispatches*)',
+	'Bash(gh api *git/refs*)',
+	'Bash(gh api *-X*contents/*)',
+	'Bash(gh api *contents/*-X*)',
+	'Bash(gh api *--method*contents/*)',
+	'Bash(gh api *contents/*--method*)',
+	'Bash(gh api *-f*contents/*)',
+	'Bash(gh api *contents/*-f*)',
+	'Bash(gh api *-F*contents/*)',
+	'Bash(gh api *contents/*-F*)',
+	'Bash(gh api *--input*contents/*)',
+	'Bash(gh api *contents/*--input*)',
+	'Bash(gh secret*)',
+	'Bash(gh variable*)',
+	'Bash(gh repo edit*)',
+	'Bash(gh repo delete*)',
+	'Bash(gh api *createCommitOnBranch*)',
+	'Bash(gh api *createRef*)',
+	'Bash(gh api *updateRef*)',
+	'Bash(git -c *)',
+	'Bash(make deploy-prod*)',
+	'Bash(make *ENV=prod*)',
+	'Bash(gcloud *iam *)',
+	'Bash(gcloud * add-iam-policy-binding*)',
+	'Bash(gcloud * remove-iam-policy-binding*)',
+	'Edit(/.claude/settings.json)',
+	'Edit(/.claude/settings.local.json)',
+	'Edit(~/.claude/settings.json)',
+	'Bash(gh pr merge:*)',
+	'mcp__github__merge_pull_request',
+];
+const strippedAskRules = new Set([...retiredAskRules, ...sharedAskRules]);
 const SETTINGS = '.claude/settings.json';
 const MERGE_AUDIT_HOOK = /merge-audit\.mjs["']?\s+--hook\b/;
 
@@ -105,9 +141,9 @@ function dropEmpty(parent, key) {
 function stripAskRules(settings) {
 	const ask = settings.permissions?.ask;
 	if (!Array.isArray(ask)) return [];
-	const removed = ask.filter((entry) => sharedAskRules.includes(entry));
+	const removed = ask.filter((entry) => strippedAskRules.has(entry));
 	if (removed.length === 0) return [];
-	settings.permissions.ask = ask.filter((entry) => !sharedAskRules.includes(entry));
+	settings.permissions.ask = ask.filter((entry) => !strippedAskRules.has(entry));
 	dropEmpty(settings.permissions, 'ask');
 	dropEmpty(settings, 'permissions');
 	return removed.map((entry) => `ask rule ${entry}`);
@@ -130,7 +166,8 @@ function stripMergeAuditHook(settings) {
 	return removed;
 }
 
-// The shared ask rules and the merge-audit hook now come from the plugin, so setup drops repo copies.
+// The shared ask rules and the merge-audit hook now come from the plugin, so setup drops repo copies,
+// and the retired ask rules with them.
 function planSettings(root) {
 	const parentSkip = symlinkedParent(root, SETTINGS);
 	if (parentSkip) return { skip: parentSkip };

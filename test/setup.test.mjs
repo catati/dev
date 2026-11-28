@@ -261,11 +261,11 @@ test('a copy of the plugin folder alone runs setup and check, so a synced plugin
 
 const catsperSettings = readFileSync(new URL('./fixtures/catsper-settings.json', import.meta.url), 'utf8');
 const settingsLines = ({ lines }) => lines.filter((line) => line.includes('.claude/settings.json'));
-const moved = JSON.parse(catsperSettings).permissions.ask.filter((rule) => !['Bash(firebase deploy*)', 'Bash(gh pr merge:*)', 'mcp__github__merge_pull_request'].includes(rule));
+const moved = JSON.parse(catsperSettings).permissions.ask.filter((rule) => rule !== 'Bash(firebase deploy*)');
 
-test("setup strips the shared ask rules and the merge-audit hook from catsper's settings, and a second run prints nothing for them", (t) => {
+test("setup strips the shared and retired ask rules and the merge-audit hook from catsper's settings, and a second run prints nothing for them", (t) => {
 	const box = sandbox(t, { files: { '.claude/settings.json': catsperSettings } });
-	assert.equal(moved.length, 29);
+	assert.equal(moved.length, 31);
 	assert.deepEqual(settingsLines(box.run()), [
 		...moved.map((rule) => `removed .claude/settings.json ask rule ${rule}`),
 		'removed .claude/settings.json hook merge-audit.mjs --hook',
@@ -275,7 +275,7 @@ test("setup strips the shared ask rules and the merge-audit hook from catsper's 
 	const settings = JSON.parse(text);
 	assert.ok(text.endsWith('}\n'));
 	assert.deepEqual(Object.keys(settings), ['permissions', 'sandbox']);
-	assert.deepEqual(settings.permissions.ask, ['Bash(firebase deploy*)', 'Bash(gh pr merge:*)', 'mcp__github__merge_pull_request']);
+	assert.deepEqual(settings.permissions.ask, ['Bash(firebase deploy*)']);
 	assert.deepEqual(settings.sandbox, JSON.parse(catsperSettings).sandbox);
 	assert.deepEqual(settingsLines(box.run()), []);
 	assert.equal(box.file('.claude/settings.json').toString(), text);
@@ -294,7 +294,7 @@ test('setup keeps other hooks and drops only emptied keys', (t) => {
 });
 
 test('setup leaves a settings file with nothing to strip byte for byte', (t) => {
-	const text = '{"permissions":{"ask":["Bash(gh secret set*)"]}}';
+	const text = '{"permissions":{"ask":["Bash(firebase deploy*)"]}}';
 	const box = sandbox(t, { files: { '.claude/settings.json': text } });
 	assert.deepEqual(settingsLines(box.run()), []);
 	assert.equal(box.file('.claude/settings.json').toString(), text);

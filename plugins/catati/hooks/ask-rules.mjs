@@ -2,49 +2,50 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { isAssignment, isReserved, simpleCommands } from './shell.mjs';
 
+// Only the calls that are dangerous to run unasked: a prod deploy, a secret or variable write, a
+// repo edit or delete, a write to main's ref, an IAM change and an edit of the local or home settings.
 export const sharedAskRules = [
-	'Bash(gh workflow run*)',
-	'Bash(gh api *dispatches*)',
-	'Bash(gh api *git/refs*)',
-	'Bash(gh api *-X*contents/*)',
-	'Bash(gh api *contents/*-X*)',
-	'Bash(gh api *--method*contents/*)',
-	'Bash(gh api *contents/*--method*)',
-	'Bash(gh api *-f*contents/*)',
-	'Bash(gh api *contents/*-f*)',
-	'Bash(gh api *-F*contents/*)',
-	'Bash(gh api *contents/*-F*)',
-	'Bash(gh api *--input*contents/*)',
-	'Bash(gh api *contents/*--input*)',
-	'Bash(gh secret*)',
-	'Bash(gh variable*)',
-	'Bash(gh repo edit*)',
-	'Bash(gh repo delete*)',
-	'Bash(gh api *createCommitOnBranch*)',
-	'Bash(gh api *createRef*)',
-	'Bash(gh api *updateRef*)',
-	'Bash(git -c *)',
 	'Bash(make deploy-prod*)',
 	'Bash(make *ENV=prod*)',
-	'Bash(gcloud *iam *)',
+	'Bash(gh secret set*)',
+	'Bash(gh secret delete*)',
+	'Bash(gh variable set*)',
+	'Bash(gh variable delete*)',
+	'Bash(gh repo delete*)',
+	'Bash(gh repo edit*)',
+	'Bash(gh api *git/refs/heads/main*)',
 	'Bash(gcloud * add-iam-policy-binding*)',
 	'Bash(gcloud * remove-iam-policy-binding*)',
-	'Edit(/.claude/settings.json)',
 	'Edit(/.claude/settings.local.json)',
 	'Edit(~/.claude/settings.json)',
 ];
 
+// Rules that match only a gh api call that writes, so a read of the main ref asks nothing.
+const WRITES_ONLY = new Set(['Bash(gh api *git/refs/heads/main*)']);
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+const BODY_FLAGS = /^(?:-[fF]|--field|--raw-field|--input)(?:=|$)|^-[fF]./;
 
 const globRegex = (pattern) => new RegExp(`^${pattern.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`, 's');
 
-function commandLines(command) {
+// Whether gh api with these words sends a write: a method other than GET, else a field or --input.
+function apiWrites(words) {
+	let method;
+	let body = false;
+	for (let index = 0; index < words.length; index++) {
+		const word = words[index];
+		let value;
+		if (word.text === '-X' || word.text === '--method') value = words[++index];
+		else if (/^(?:-X|--method=)./.test(word.text)) value = { text: word.text.replace(/^-X|^--method=/, ''), dynamic: word.dynamic };
+		else if (BODY_FLAGS.test(word.text)) body = true;
+		if (value) method = value.dynamic ? '' : value.text.toUpperCase();
+	}
+	return method === undefined ? body : method !== 'GET';
+}
+
+function commandWords(command) {
 	return simpleCommands(command).map((words) => {
 		const start = words.findIndex((word) => !isAssignment(word) && !isReserved(word));
-		return words
-			.slice(start < 0 ? words.length : start)
-			.map((word) => word.text)
-			.join(' ');
+		return words.slice(start < 0 ? words.length : start);
 	});
 }
 
@@ -56,10 +57,11 @@ function editMatches(pattern, path, home) {
 // The first shared ask rule the tool call matches, or undefined. It throws when the call cannot be read.
 export function matchingAskRule({ tool_name, tool_input, cwd }, home = homedir()) {
 	if (tool_name === 'Bash') {
-		const lines = commandLines(String(tool_input?.command ?? ''));
+		const commands = commandWords(String(tool_input?.command ?? ''));
 		return sharedAskRules.find((rule) => {
 			const [, tool, pattern] = rule.match(/^(\w+)\((.*)\)$/);
-			return tool === 'Bash' && lines.some((line) => globRegex(pattern).test(line));
+			if (tool !== 'Bash') return false;
+			return commands.some((words) => globRegex(pattern).test(words.map((word) => word.text).join(' ')) && (!WRITES_ONLY.has(rule) || apiWrites(words)));
 		});
 	}
 	if (!EDIT_TOOLS.has(tool_name)) return undefined;

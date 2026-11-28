@@ -6,8 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\"",
-            "onFailure": "block"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\""
           }
         ]
       },
@@ -16,8 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\"",
-            "onFailure": "block"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.mjs\""
           }
         ]
       }

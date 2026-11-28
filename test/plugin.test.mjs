@@ -75,8 +75,8 @@ test('the PreToolUse guard runs on every edit, Bash call and MCP merge tool of a
 	for (const name of ['mcp__github__disable_pr_auto_merge', 'mcp__github__merge_pull_requests', 'Bash']) assert.ok(!matches(name), name);
 });
 
-test('a PreToolUse guard that crashes or times out blocks the call', () => {
-	for (const group of hooks.PreToolUse) for (const hook of group.hooks) assert.equal(hook.onFailure, 'block');
+test('a PreToolUse guard that crashes or times out does not block the call, since the verifier-record status is the backstop', () => {
+	for (const group of hooks.PreToolUse) for (const hook of group.hooks) assert.equal(hook.onFailure, undefined);
 });
 
 test('setup-dev references name plugin files under <plugin>/, and env/.env.example names paths that exist', () => {

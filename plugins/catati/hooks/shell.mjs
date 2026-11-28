@@ -2,15 +2,21 @@
 // quotes, comments, $(…), backticks, subshells and heredocs. A word is dynamic when the shell
 // would expand part of it. Command substitutions count as commands of their own, and a heredoc
 // body counts only for the substitutions an unquoted one expands. A command's list also carries
-// stdin, the text of its heredoc or here-string, and piped, true when a pipe feeds it. It throws
-// when a heredoc that never closes holds gh, since what runs then is unclear.
+// stdin, the text of its heredoc or here-string, piped, true when a pipe feeds it, and scope, which
+// names the subshell it runs in: '' for the shell itself, and a child's scope starts with its
+// parent's and a slash. It throws when a heredoc that never closes holds gh, since what runs then is unclear.
 export function simpleCommands(source) {
 	return scan(source)[0];
 }
 
-function scan(source, start = 0, inner = false) {
+let scopes = 0;
+
+function scan(source, start = 0, inner = false, scope = '') {
 	const commands = [];
 	const heredocs = [];
+	const stack = [];
+	const here = () => [scope, ...stack].join('/');
+	const child = () => `${here()}/${++scopes}`;
 	let words = [];
 	let word = null;
 	let quote = null;
@@ -33,13 +39,14 @@ function scan(source, start = 0, inner = false) {
 		end();
 		if (words.length) {
 			words.piped = piped;
+			words.scope = here();
 			commands.push(words);
 			piped = false;
 		}
 		words = [];
 	};
 	const nested = (from) => {
-		const [found, after] = scan(source, from, true);
+		const [found, after] = scan(source, from, true, child());
 		commands.push(...found);
 		add('', true);
 		return after;
@@ -61,7 +68,7 @@ function scan(source, start = 0, inner = false) {
 			index += 2;
 		} else if (char === '`') {
 			const [text, after] = backticks(source, index);
-			commands.push(...scan(text)[0]);
+			commands.push(...scan(text, 0, false, child())[0]);
 			add('', true);
 			index = after;
 		} else if (char === '(' && next === '(' && !word && arithmetic(source, index) > 0) {
@@ -110,9 +117,15 @@ function scan(source, start = 0, inner = false) {
 			close();
 			return [commands, index + 1];
 		} else if (char === '\n' || ';&|()'.includes(char)) {
-			if (char === '(') depth++;
-			if (char === ')') depth = Math.max(0, depth - 1);
 			close();
+			if (char === '(') {
+				depth++;
+				stack.push(++scopes);
+			}
+			if (char === ')') {
+				depth = Math.max(0, depth - 1);
+				stack.pop();
+			}
 			index++;
 			if (char === '|' && next !== '|' && source[index - 2] !== '|') piped = true;
 			if (char !== '\n') continue;
@@ -137,7 +150,7 @@ function scan(source, start = 0, inner = false) {
 				const text = source.slice(body, bodyEnd);
 				if (!closed && /\bgh\b/.test(text)) throw new Error('a heredoc that never closes holds gh');
 				owner.stdin = text;
-				if (expands) commands.push(...substitutions(text));
+				if (expands) commands.push(...substitutions(text, here()));
 			}
 		} else if (/\s/.test(char)) {
 			end();
@@ -180,19 +193,19 @@ function arithmetic(source, index) {
 	return -1;
 }
 
-// The commands an unquoted heredoc body runs: its $(…) and backticks.
-function substitutions(body) {
+// The commands an unquoted heredoc body runs: its $(…) and backticks, each in a subshell of scope.
+function substitutions(body, scope) {
 	const found = [];
 	let index = 0;
 	while (index < body.length) {
 		if (body[index] === '\\') index += 2;
 		else if (body.startsWith('$(', index)) {
-			const [commands, after] = scan(body, index + 2, true);
+			const [commands, after] = scan(body, index + 2, true, `${scope}/${++scopes}`);
 			found.push(...commands);
 			index = after;
 		} else if (body[index] === '`') {
 			const [text, after] = backticks(body, index);
-			found.push(...scan(text)[0]);
+			found.push(...scan(text, 0, false, `${scope}/${++scopes}`)[0]);
 			index = after;
 		} else index++;
 	}

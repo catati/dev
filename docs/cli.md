@@ -94,7 +94,7 @@ node plugins/catati/scripts/catati.mjs setup [--dry-run]
 | `.github/workflows/verifier-record.yml` | Copies `templates/verifier-record/workflow.yml`. |
 | `.github/verifier-record/verifier-record.mjs`, `.github/verifier-record/doors.md` | Copies the script and the one-way-door list from `templates/verifier-record/`. The workflow runs the script, which reads `doors.md` next to itself. |
 | `.github/pull_request_template.md` | Deletes it, because catati/dev no longer manages it. |
-| `.claude/settings.json` | When present, removes each `permissions.ask` entry that equals one of the plugin's shared ask rules, and any PreToolUse hook that runs `merge-audit.mjs --hook`, because the plugin's guard hook now enforces both. It keeps every other line and its order, and writes only when something changed. |
+| `.claude/settings.json` | When present, removes each `permissions.ask` entry that equals one of the plugin's shared ask rules or one of its retired ones (`retiredAskRules` in `lib/setup.mjs`), and any PreToolUse hook that runs `merge-audit.mjs --hook`, because the plugin's guard hook now decides which calls ask and guards merges. It keeps every other line and its order, and writes only when something changed. |
 
 A copy replaces the whole file when one byte differs, and keeps the file's mode. `setup` does not touch the `Makefile`, `ci.yml`, `.github/CODEOWNERS`, `package.json`, `CLAUDE.md`, or the Biome and tsconfig bases. No ruleset asks for code-owner review, so `CODEOWNERS` enforces nothing, and the operator already merges those paths as [one-way doors](../plugins/catati/conventions/issues-and-prs.md#one-way-door-paths).
 

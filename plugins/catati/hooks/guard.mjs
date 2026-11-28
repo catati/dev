@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { matchingAskRule } from './ask-rules.mjs';
 import { isMainModule } from './main-module.mjs';
-import { ghRead, mergeDenial } from './merge-guard.mjs';
+import { ghRead, mergeDecision } from './merge-guard.mjs';
 
 const decision = (permissionDecision, permissionDecisionReason) => ({
 	hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision, permissionDecisionReason },
@@ -18,8 +18,8 @@ export function guard(text, read = ghRead) {
 	} catch (error) {
 		return unreadable(error);
 	}
-	const denial = mergeDenial(input, read);
-	if (denial) return decision('deny', denial);
+	const merge = mergeDecision(input, read);
+	if (merge) return decision(merge.decision, merge.reason);
 	let rule;
 	try {
 		rule = matchingAskRule(input);
