@@ -35,7 +35,7 @@ These rules keep Actions minutes near zero. Every run bills each job's time roun
 | CI runs on the `pull_request` types `opened`, `synchronize`, `reopened` and `ready_for_review`, so marking a PR ready starts a run. | cat-hotel: `ci.yml`; judgment elsewhere |
 | On a draft PR the tooling job (`tooling-verify`, or `verify` in a repo with one job) fails at once with a draft notice, and no package job runs. | cat-hotel: `ci.yml`; judgment elsewhere |
 | Each package job waits for the tooling job. GitHub counts a check that was skipped on the draft as passed until the ready run creates a new one. | cat-hotel: `ci.yml`; judgment elsewhere |
-| A push to `main` runs only the tooling job, because the PR already ran the package jobs. This is safe only while the `check` ruleset is strict, so every PR ran its jobs on the current `main`. See [branches.md](branches.md#rulesets). | judgment |
+| A push to `main` runs only the tooling job, because the PR already ran the package jobs. This is safe only while the `check` ruleset is strict or requires a merge queue, so every PR ran its jobs on the current `main`. See [branches.md](branches.md#rulesets). | judgment |
 
 ## Actions
 

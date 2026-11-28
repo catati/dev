@@ -18,7 +18,7 @@ Each repo has two branch rulesets on its default branch, `main` and `check`. `ma
 | The `main` ruleset requires a PR and blocks force pushes and deletion. | judgment |
 | In a repo that a Shopify app writes to, `shopify[bot]` is exempt from the `main` ruleset. | judgment |
 | The `check` ruleset requires the checks that the repo's docs list as required. See [ci.md](ci.md#required-checks). | judgment |
-| The `check` ruleset is strict, so a PR's branch must hold the current `main` before it merges. | judgment |
+| Every PR's required checks run on the current `main` before it lands. Either the `check` ruleset is strict, so a PR's branch must hold the current `main`, or it requires a merge queue, which builds each PR on the latest `main` (catsper). A queue needs no branch update when `main` moves. | judgment |
 | The `check` ruleset's only bypass actor is the OrganizationAdmin role, kept on purpose as break-glass (operator, 2026-11-15). Every agent acts as the operator's GitHub account and so holds that bypass: an agent checks the verifier record and green required CI itself before it merges, and never merges past a red check. | judgment |
 
 ## Session start
