@@ -8,6 +8,7 @@ export const retiredFiles = ['.github/pull_request_template.md'];
 // Ask rules repos carried before the guard hook cut its list down to the dangerous calls, and the
 // merge asks the merge guard replaces. Setup drops them from a repo's settings with the shared ones.
 export const retiredAskRules = [
+	'Bash(firebase deploy*)',
 	'Bash(gh workflow run*)',
 	'Bash(gh api *dispatches*)',
 	'Bash(gh api *git/refs*)',

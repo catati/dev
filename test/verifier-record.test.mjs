@@ -50,7 +50,7 @@ test('the description names the head and who merges, within the 140 characters a
 
 test('the door list is read from the doors.md next to the script', () => {
 	assert.ok(list.links, 'the symlink and submodule rule');
-	for (const pattern of ['.github/**', '**/package.json', 'env/setup.sh', 'plugins/catati/templates/githooks/**', '**/wrangler.jsonc', 'firestore.indexes.json'])
+	for (const pattern of ['.github/**', '**/package.json', 'env/setup.sh', 'plugins/catati/templates/githooks/**', '**/wrangler.jsonc', '**/migrations/**'])
 		assert.ok(list.patterns.includes(pattern), pattern);
 	assert.ok(!list.patterns.includes('pnpm-lock.yaml'), 'only the Path column is read');
 	assert.throws(() => parseDoors('# Nothing here\n'), /no \*\*\/package\.json row/);
