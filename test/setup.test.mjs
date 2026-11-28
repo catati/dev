@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 
-const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
-const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
+const cli = new URL('../plugins/catati/scripts/catati.mjs', import.meta.url).pathname;
+const template = (name) => readFileSync(new URL(`../plugins/catati/templates/${name}`, import.meta.url));
 
 const managed = {
 	'.github/ISSUE_TEMPLATE/issue.yml': 'issue.yml',
@@ -239,4 +239,77 @@ test('an unknown option prints one line and exits with 2', (t) => {
 	const box = sandbox(t);
 	assert.deepEqual(box.run('--force'), { status: 2, lines: [], errors: ['catati: setup takes only --dry-run, not --force'] });
 	assert.equal(existsSync(join(box.root, '.github')), false);
+});
+
+test('a copy of the plugin folder alone runs setup and check, so a synced plugin needs no catati/dev clone', (t) => {
+	const parent = mkdtempSync(join(tmpdir(), 'catati-plugin-'));
+	t.after(() => rmSync(parent, { recursive: true, force: true }));
+	const plugin = join(parent, 'plugin');
+	execFileSync('cp', ['-R', new URL('../plugins/catati', import.meta.url).pathname, plugin]);
+	const root = join(parent, 'repo');
+	mkdirSync(root);
+	execFileSync('git', ['init', '-q'], { cwd: root });
+	const env = { ...process.env, GIT_CEILING_DIRECTORIES: parent };
+	const run = (command) => spawnSync('node', [join(plugin, 'scripts', 'catati.mjs'), command], { cwd: root, env, encoding: 'utf8' });
+	const setup = run('setup');
+	assert.equal(setup.status, 0, setup.stderr);
+	assert.deepEqual(setup.stdout.trim().split('\n'), [...every('created'), ...remaining]);
+	const check = run('check');
+	assert.equal(check.status, 1);
+	assert.deepEqual(check.stdout.trim().split('\n'), remaining);
+});
+
+const catsperSettings = readFileSync(new URL('./fixtures/catsper-settings.json', import.meta.url), 'utf8');
+const settingsLines = ({ lines }) => lines.filter((line) => line.includes('.claude/settings.json'));
+const moved = JSON.parse(catsperSettings).permissions.ask;
+
+test("setup strips the shared and retired ask rules and the merge-audit hook from catsper's settings, and a second run prints nothing for them", (t) => {
+	const box = sandbox(t, { files: { '.claude/settings.json': catsperSettings } });
+	assert.equal(moved.length, 32);
+	assert.deepEqual(settingsLines(box.run()), [
+		...moved.map((rule) => `removed .claude/settings.json ask rule ${rule}`),
+		'removed .claude/settings.json hook merge-audit.mjs --hook',
+		'updated .claude/settings.json',
+	]);
+	const text = box.file('.claude/settings.json').toString();
+	const settings = JSON.parse(text);
+	assert.ok(text.endsWith('}\n'));
+	assert.deepEqual(Object.keys(settings), ['sandbox']);
+	assert.deepEqual(settings.sandbox, JSON.parse(catsperSettings).sandbox);
+	assert.deepEqual(settingsLines(box.run()), []);
+	assert.equal(box.file('.claude/settings.json').toString(), text);
+});
+
+test('setup keeps other hooks and drops only emptied keys', (t) => {
+	const own = { matcher: 'Bash', hooks: [{ type: 'command', command: 'node lint.mjs' }] };
+	const mixed = { matcher: 'Bash', hooks: [{ type: 'command', command: 'node scripts/merge-audit.mjs --hook' }, { type: 'command', command: 'node other.mjs' }] };
+	const input = { permissions: { ask: ['Bash(gh secret*)'], allow: ['Bash(ls)'] }, hooks: { PreToolUse: [own, mixed], Stop: [own] } };
+	const box = sandbox(t, { files: { '.claude/settings.json': JSON.stringify(input) } });
+	box.run();
+	assert.deepEqual(JSON.parse(box.file('.claude/settings.json')), {
+		permissions: { allow: ['Bash(ls)'] },
+		hooks: { PreToolUse: [own, { matcher: 'Bash', hooks: [{ type: 'command', command: 'node other.mjs' }] }], Stop: [own] },
+	});
+});
+
+test('setup leaves a settings file with nothing to strip byte for byte', (t) => {
+	const text = '{"permissions":{"ask":["Bash(wrangler deploy*)"]}}';
+	const box = sandbox(t, { files: { '.claude/settings.json': text } });
+	assert.deepEqual(settingsLines(box.run()), []);
+	assert.equal(box.file('.claude/settings.json').toString(), text);
+});
+
+test('--dry-run reports the settings removals and writes nothing', (t) => {
+	const box = sandbox(t, { files: { '.claude/settings.json': catsperSettings } });
+	assert.equal(settingsLines(box.run('--dry-run')).at(-1), 'updated .claude/settings.json');
+	assert.equal(box.file('.claude/settings.json').toString(), catsperSettings);
+});
+
+test('a settings file that is not valid JSON is skipped', (t) => {
+	const box = sandbox(t, { files: { '.claude/settings.json': '{ "permissions": ' } });
+	const result = box.run();
+	assert.equal(result.status, 0);
+	const [line] = settingsLines(result);
+	assert.match(line, /^skipped \.claude\/settings\.json: \S/);
+	assert.equal(box.file('.claude/settings.json').toString(), '{ "permissions": ');
 });

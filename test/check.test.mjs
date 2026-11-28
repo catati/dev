@@ -4,10 +4,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { checks } from '../lib/check.mjs';
+import { checks } from '../plugins/catati/lib/check.mjs';
 
-const cli = new URL('../bin/catati.mjs', import.meta.url).pathname;
-const template = (name) => readFileSync(new URL(`../templates/${name}`, import.meta.url));
+const cli = new URL('../plugins/catati/scripts/catati.mjs', import.meta.url).pathname;
+const template = (name) => readFileSync(new URL(`../plugins/catati/templates/${name}`, import.meta.url));
 
 const cleanMakefile = ['install test e2e:', '\t@true', 'verify: lint', '\t@true', 'lint help format staged-check:', '\t@true', ''].join('\n');
 

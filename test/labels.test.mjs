@@ -5,8 +5,8 @@ import { test } from 'node:test';
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('templates/labels.json holds the status labels that naming.md names, in a form GitHub accepts', () => {
-	const labels = JSON.parse(read('templates/labels.json'));
-	const row = read('conventions/naming.md')
+	const labels = JSON.parse(read('plugins/catati/templates/labels.json'));
+	const row = read('plugins/catati/conventions/naming.md')
 		.split('\n')
 		.find((line) => /^\| The status labels are /.test(line));
 	assert.ok(row, 'naming.md has a status labels row');

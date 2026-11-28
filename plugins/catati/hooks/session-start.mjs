@@ -2,9 +2,14 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, linkSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isMainModule } from './main-module.mjs';
 
 export const modelRule = new URL('../rules/pstack-models.md', import.meta.url);
+const standardRule = new URL('../rules/catati-standard.md', import.meta.url);
+const conventions = fileURLToPath(new URL('../conventions', import.meta.url));
+
+export const standardText = () => readFileSync(standardRule, 'utf8').replace('{conventions}', conventions);
 
 function git(args, cwd) {
 	return execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] }).toString().trimEnd();
@@ -81,5 +86,6 @@ export function pluginSessionStart({ base, home }) {
 
 if (isMainModule(import.meta.url)) {
 	const base = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+	process.stdout.write(standardText());
 	for (const problem of pluginSessionStart({ base, home: homedir() })) console.log(`catati: ${problem}`);
 }

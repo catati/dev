@@ -61,9 +61,9 @@ These names apply to every Catati repo. The Exceptions section lists the names t
 
 | Rule | Example | Check |
 | --- | --- | --- |
-| A repo takes no dependency on `catati/dev`. Each `/catati:repo-setup` run fetches `catati/dev` `main` and runs `catati setup` from that copy, which writes the standard's files into the repo. | No `@catati/dev` or `catati-dev` key in `package.json`, and no `uses: catati/dev/…` in a workflow. | `catati check` (`dev-dependency`), and judgment |
+| A repo takes no dependency on `catati/dev`. Each `/catati:setup-dev` run runs `catati setup` from the standard the `catati` plugin ships, which writes the standard's files into the repo. | No `@catati/dev` or `catati-dev` key in `package.json`, and no `uses: catati/dev/…` in a workflow. | `catati check` (`dev-dependency`), and judgment |
 | Code moves into `catati/dev` only when two or more repos need it unchanged. | A script that one repo uses stays in that repo. | judgment |
-| `catati/dev` has no bot, sync job or reusable workflow (operator, 2026-11-19). A change reaches a repo only through that repo's own `/catati:repo-setup` PR. | A repo gets `verifier-record.yml` as a copy from a `/catati:repo-setup` run. | `catati check` (`dev-dependency`), and judgment |
+| `catati/dev` has no bot, sync job or reusable workflow (operator, 2026-11-19). A change reaches a repo only through that repo's own `/catati:setup-dev` PR. | A repo gets `verifier-record.yml` as a copy from a `/catati:setup-dev` run. | `catati check` (`dev-dependency`), and judgment |
 
 ## Titles and labels
 

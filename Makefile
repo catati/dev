@@ -30,4 +30,4 @@ staged-check:
 	@echo "staged-check: no staged checks in this repo"
 
 verify: test lint
-	node bin/catati.mjs check
+	node plugins/catati/scripts/catati.mjs check

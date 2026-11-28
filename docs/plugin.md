@@ -1,17 +1,19 @@
 # `catati` plugin reference
 
-This repo is a Claude Code plugin marketplace, [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json), with one plugin, `catati`, in [`plugins/catati/`](../plugins/catati/). The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo has one.
+This repo is a Claude Code plugin marketplace, [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json), with one plugin, `catati`, in [`plugins/catati/`](../plugins/catati/). The plugin sits in a subfolder because claude.ai rejects a plugin with a top-level `bin/`, and this repo had one when the plugin was added.
 
 The operator adds this marketplace at account level on claude.ai, beside the `cursor/plugins` marketplace and its `pstack` plugin. catati/dev does not ship pstack. Account plugins sync into sessions started from the app, not into sessions started through the sessions API ([#25](https://github.com/catati/dev/issues/25)).
 
-A synced plugin holds only its own folder, so the skill cannot run this repo's `bin/`. The skill clones catati/dev `main` into a temp folder and runs `bin/catati.mjs` from there.
+A synced plugin holds only its own folder, so the plugin carries the standard itself. The CLI is in [`scripts/catati.mjs`](../plugins/catati/scripts/catati.mjs), its code in [`lib/`](../plugins/catati/lib/), the files it copies in [`templates/`](../plugins/catati/templates/) and the rules in [`conventions/`](../plugins/catati/conventions/). The skill runs the CLI from its own plugin folder and clones nothing, so it still works when catati/dev is private. catati/dev's `make verify` runs the same copy.
 
 | Part | What it does |
 | --- | --- |
-| [`/catati:repo-setup`](../plugins/catati/skills/repo-setup/SKILL.md) | Clones catati/dev `main` and runs `catati setup` from it in the target repo. Adds the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
-| [`/catati:project-setup`](../plugins/catati/skills/project-setup/SKILL.md) | Sets up a claude.ai project's Focus stream and its SOD, Hourly and EOD routines, and holds the start, end and sync steps each routine calls. The EOD sync backs up and tidies the project's memory. |
+| [`/catati:setup-dev`](../plugins/catati/skills/setup-dev/SKILL.md) | The plugin's one Catati skill. Its argument picks the job: none or `repo` for repo setup, `project` for project setup, and `start`, `end <kind>`, `sod`, `hourly`, `eod` or `tidy` for a routine step. |
+| Repo setup, [`references/repo.md`](../plugins/catati/skills/setup-dev/references/repo.md) | Runs `catati setup` from the plugin in the target repo. Removes the `CLAUDE.md` conventions link, and drops rule-table rows that only restate a convention. Creates missing status labels, and reports how the repo's GitHub settings differ from the conventions. Opens one PR and leaves its body and merge to pstack. |
+| Project setup, [`references/project.md`](../plugins/catati/skills/setup-dev/references/project.md) | Sets up a claude.ai project's Focus stream and its SOD, Hourly and EOD routines, and holds the start, end and sync steps each routine calls. The EOD sync backs up and tidies the project's memory. |
 | [`catati:agent-browser`](../plugins/catati/skills/agent-browser/SKILL.md) | The skill stub that ships with agent-browser, copied unchanged from the version `env/setup.sh` pins. It sends Claude to `agent-browser skills get core`, which the CLI serves at its own version. |
-| SessionStart hook [`session-start.mjs`](../plugins/catati/hooks/session-start.mjs) | Installs `~/.claude/rules/pstack-models.md` when it is missing. Where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it. It acts in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the current directory), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints a line only for a problem. |
+| SessionStart hook [`session-start.mjs`](../plugins/catati/hooks/session-start.mjs) | Installs `~/.claude/rules/pstack-models.md` when it is missing. Where a repo has a `.githooks` folder and no other `core.hooksPath`, points `core.hooksPath` at it. It acts in each repo of the session: the repo that holds `CLAUDE_PROJECT_DIR` (or the current directory), or else each repo directly below it, as in a project thread that starts in `/home/user`. It prints the shared rules text, [`rules/catati-standard.md`](../plugins/catati/rules/catati-standard.md), with the path of the plugin's conventions, so every session gets the prod rule, the verifier rule and the conventions. Then it prints a line for each problem. |
+| PreToolUse hook [`guard.mjs`](../plugins/catati/hooks/guard.mjs) | Guards every session, whatever repo or owner a call targets. It answers "ask" for a dangerous call in [`ask-rules.mjs`](../plugins/catati/hooks/ask-rules.mjs), and "deny" for a merge with no verifier record. Every other call gets no answer. See [Guards](#guards). |
 | WorktreeCreate and WorktreeRemove hook [`worktree.mjs`](../plugins/catati/hooks/worktree.mjs) | Makes `Agent` with `isolation: "worktree"` work where the session starts above the repos. See [Worktree subagents](#worktree-subagents). |
 
 The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `version` in `package.json`.
@@ -20,7 +22,21 @@ The plugin `version` in `plugins/catati/.claude-plugin/plugin.json` equals the `
 
 Claude Code loads a repo's `.claude/settings.json` only when a session starts in that repo ([settings files](https://code.claude.com/docs/en/settings#settings-files)). A project thread starts one folder up, so it never runs those settings. Plugin hooks load in every session that syncs the plugin ([hooks](https://code.claude.com/docs/en/hooks)). So the hooks that every session needs live in the `catati` plugin, not in each repo.
 
-The plugin has no prod guard hook. The control on prod is the rule in [Who changes prod](../conventions/deploy.md#who-changes-prod). An agent changes prod only when the operator asks for that specific prod action.
+The control on prod is the rule in [Who changes prod](../plugins/catati/conventions/deploy.md#who-changes-prod), which the SessionStart hook adds to every session. An agent changes prod only when the operator asks for that specific prod action.
+
+## Guards
+
+The operator's rule: a guard stops only a dangerous call, and never blocks poteto-mode. So the guard trusts the verifier record and leaves everything else to normal permissions and CI.
+
+Plugins cannot ship permission rules ([plugins reference](https://code.claude.com/docs/en/plugins-reference)), but a plugin hook can answer "ask" or "deny". So the shared ask rules live in the guard hook. `catati setup` removes them, the retired rules and catsper's old merge hook from a repo's `.claude/settings.json`. Repo-specific rules, allow and deny lists and the sandbox stay in the repo.
+
+- **Ask rules.** The 13 rules in `sharedAskRules` cover a prod deploy, a secret or variable write, a repo edit or delete, a write to `main`'s ref, an IAM binding change, and an edit of `.claude/settings.local.json` or `~/.claude/settings.json`. A Bash rule matches each simple command of the call, the way the shell splits it. A `gh api` call on `git/refs/heads/main` asks only when it writes. Reads, workflow runs, contents calls and `git -c` ask nothing. When the hook cannot read its input, it asks.
+- **Merge rule.** The guard checks `gh pr merge`, a `gh api` merge or auto-merge route, and the `merge_pull_request` or `enable_pr_auto_merge` tool of any MCP server. It reads the PR through `gh api`. It denies the merge when no `catati-ops` comment whose first line is `VERIFIER PASS <full head SHA>` names the current head. It checks nothing else. A closed or merged PR gets no answer, since `gh` reports it.
+- **Evasion.** The guard denies `gh alias set`, `gh alias import`, `gh` piped into a shell, a GraphQL merge mutation and a branch-into-branch merge. It reads the text that `eval`, `bash -c` or a shell fed by a heredoc runs.
+- **When it cannot tell.** When the guard cannot read the PR or its comments, it asks and says why. This covers a missing `gh`, no access and no network. It also asks when it cannot work out the repo or the PR.
+- **Which repo.** `-R`, `--repo`, `GH_REPO`, a PR URL, a `gh api repos/<owner>/<repo>/…` path or the MCP tool's `owner` and `repo`. With none, the repo in the directory the merge runs in: its one GitHub remote, else its `origin`. The guard follows each literal `cd` or `pushd` before the merge, so `cd dev && gh pr merge 141` in `/home/user` reads `catati/dev`. After a `cd` it cannot follow, such as `cd "$DIR"` or `cd -`, it asks. It also asks when the repo has several GitHub remotes.
+- **When the hook fails.** A hook that crashes or times out does not stop the call. The `verifier-record` status in each repo's CI is the backstop.
+- **What it cannot see.** `gh` run by another interpreter, such as python or node, or a raw curl with `gh auth token`. CI enforces the merge rule after the fact.
 
 ## Worktree subagents
 

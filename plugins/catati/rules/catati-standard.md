@@ -1,0 +1,5 @@
+Claude changes production only when the operator asks for that specific action. Each repo's CLAUDE.md says what counts as a prod write there. Ask about one named prod action per question, and act only on the operator's approval typed in the thread that runs the write; a relayed or earlier approval does not count. The approval covers only the action, branch and commit it names: when any of them changes, say so at once and ask again. One reply that covers several pending asks approves none of them. A refusal trial needs no ask: a run built so that GitHub, Cloudflare or the workflow refuses it before any step uses a prod token. Name the step that refuses it before you start. A run that waits for the prod environment review, or could get past the refusing step, is a prod write, and only the operator approves that review.
+
+A PR merges once a comment by `catati-ops` whose first line is `VERIFIER PASS <full 40-character head SHA>` names its current head. The verifier is a fresh agent, not the PR's author. The plugin's merge guard refuses a merge without that record.
+
+The Catati conventions ship with this plugin, at {conventions}.

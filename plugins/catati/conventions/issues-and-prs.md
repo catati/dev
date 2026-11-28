@@ -6,7 +6,7 @@ Title formats, status label names and the labels file are in [naming.md](naming.
 
 | Rule | Check |
 | --- | --- |
-| `CLAUDE.md` links to `catati/dev/conventions/`. | judgment |
+| `CLAUDE.md` carries no link to the conventions. The `catati` plugin gives every session the shared rules and the path to its copy of the conventions. | `/catati:setup-dev` |
 | In the rule table that pstack's [`/correct`](https://github.com/cursor/plugins/blob/main/pstack/skills/correct/SKILL.md#keep-the-rule-table) keeps in `CLAUDE.md`, a row that restates a convention stays only when it adds something repo-specific: a repo enforcer, a repo name or account, or a stricter local form. A row that adds nothing to the convention goes. | judgment |
 | A kept row links the convention section instead of copying its wording. | judgment |
 
