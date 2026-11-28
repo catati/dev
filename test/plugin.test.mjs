@@ -42,12 +42,10 @@ test('every file the setup-dev skill links to exists', () => {
 	for (const link of links) assert.ok(existsSync(join(dir, link)), link);
 });
 
-test('project setup creates no routines and tells old routine calls to stop, since projects run no scheduled reports', () => {
-	const project = readFileSync(join(pluginRoot, 'skills', 'setup-dev', 'references', 'project.md'), 'utf8');
-	assert.doesNotMatch(project, /project-setup|repo-setup|create_trigger|fire_trigger/);
-	assert.match(project, /^## Old routine$/m);
-	assert.match(project, /runs no scheduled reports any more/);
-	assert.match(project, /enabled false/);
+test('setup-dev covers repos only, with no claude.ai project or routine setup (operator, 2026-11-28)', () => {
+	const dir = join(pluginRoot, 'skills', 'setup-dev');
+	assert.equal(existsSync(join(dir, 'references', 'project.md')), false);
+	assert.doesNotMatch(readFileSync(join(dir, 'SKILL.md'), 'utf8'), /`project`|routine|create_trigger/);
 });
 
 test('no plugin text clones catati/dev, because a synced plugin carries the standard', () => {
